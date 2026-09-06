@@ -992,6 +992,69 @@
 	}
 
 //#endregion
+//#region src/effect-scope.js
+/** @import { default as Component } from './component.js'; */
+	/**
+	* @typedef {object} EffectScope
+	* @property {Set<() => void>} cleanups The effect and nested-scope cleanup callbacks.
+	* @property {boolean} disposed Whether the scope has been stopped.
+	*/
+	var activeScopes = /* @__PURE__ */ new WeakMap();
+	/**
+	* Gets the active effect scope for a component.
+	* @param {Component} component The component that owns the effects.
+	* @returns {EffectScope|undefined} The active scope, if any.
+	*/
+	function getEffectScope(component) {
+		return activeScopes.get(component);
+	}
+	/**
+	* Runs a callback with its original effect scope, restoring the previous scope afterward.
+	* @param {Component} component The component that owns the effects.
+	* @param {EffectScope|undefined} scope The scope to activate.
+	* @param {() => void} callback The synchronous callback to execute.
+	*/
+	function runInEffectScope(component, scope, callback) {
+		const previous = activeScopes.get(component);
+		if (scope) activeScopes.set(component, scope);
+		else activeScopes.delete(component);
+		try {
+			callback();
+		} finally {
+			if (previous) activeScopes.set(component, previous);
+			else activeScopes.delete(component);
+		}
+	}
+	/**
+	* Collects effects for a loop row, including nested scopes and effects created by later runs.
+	* @param {Component} component The component that owns the bindings.
+	* @param {() => void} callback The synchronous binding setup callback.
+	* @returns {() => void} Stops and releases the collected effects.
+	*/
+	function collectEffects(component, callback) {
+		const parent = activeScopes.get(component);
+		const scope = {
+			cleanups: /* @__PURE__ */ new Set(),
+			disposed: false
+		};
+		const dispose = () => {
+			if (scope.disposed) return;
+			scope.disposed = true;
+			for (const cleanup of scope.cleanups) cleanup();
+			scope.cleanups.clear();
+			parent?.cleanups.delete(dispose);
+		};
+		parent?.cleanups.add(dispose);
+		try {
+			runInEffectScope(component, scope, callback);
+		} catch (error) {
+			dispose();
+			throw error;
+		}
+		return dispose;
+	}
+
+//#endregion
 //#region src/blocks.js
 /** @import { default as Component } from './component.js'; */
 	/**
@@ -1169,10 +1232,12 @@
 					const id = item[identifier];
 					if (loopRecords.has(id)) throw new Error(`Duplicate identifier "${id}" in "${iterable}"`);
 					let loopComponent;
+					let dispose;
 					if (previousRecords.has(id)) {
 						const previous = previousRecords.get(id);
 						const state = { ...item };
 						loopComponent = previous.component;
+						dispose = previous.dispose;
 						for (const key of previous.stateKeys) if (!Object.hasOwn(item, key)) state[key] = void 0;
 						if (loopComponent.initialized) loopComponent.state.set(state);
 						else setInitialState(loopComponent, state);
@@ -1181,18 +1246,22 @@
 						loopComponent = element.cloneNode(true);
 						setInitialState(loopComponent, item);
 						const [nestedConditionals, nestedLoops] = parseBlocks(loopComponent);
-						bind(component, loopComponent);
-						processConditionals(component, nestedConditionals);
-						processLoops(component, nestedLoops);
+						dispose = collectEffects(component, () => {
+							bind(component, loopComponent);
+							processConditionals(component, nestedConditionals);
+							processLoops(component, nestedLoops);
+						});
 						end.parentNode.insertBefore(loopComponent, end);
 					}
 					loopRecords.set(id, {
 						component: loopComponent,
+						dispose,
 						stateKeys: Object.keys(item)
 					});
 				}
-				for (const [id, { component: loopComponent }] of previousRecords) {
+				for (const [id, { component: loopComponent, dispose }] of previousRecords) {
 					if (loopRecords.has(id)) continue;
+					dispose();
 					if (loopComponent.initialized) loopComponent.element.remove();
 					else loopComponent.remove();
 				}
@@ -1595,18 +1664,30 @@
 		* @param {() => void} callback The effect callback to register.
 		* @param {object} [options] The effect options.
 		* @param {boolean} [options.waitForVisible=true] Whether to defer effects until the component is visible.
+		* @returns {() => void} Stops the effect and releases its active and deferred registrations.
 		*/
 		effect(callback, { waitForVisible = true } = {}) {
 			const ref = {};
+			const scope = getEffectScope(this);
 			const effect = useEffect(() => {
+				if (scope?.disposed) return;
 				if (!this.#mounted || waitForVisible && !this.#visible) {
 					this.#pendingEffects.add(ref);
 					return;
 				}
-				callback();
+				runInEffectScope(this, scope, callback);
 			}, { weak: true });
 			ref.effect = effect;
 			this.#effects.add(effect);
+			const dispose = () => {
+				effect.stop();
+				this.#effects.delete(effect);
+				this.#pendingEffects.delete(ref);
+				scope?.cleanups.delete(dispose);
+			};
+			if (scope?.disposed) dispose();
+			else scope?.cleanups.add(dispose);
+			return dispose;
 		}
 		/**
 		* Gets a slot definition.

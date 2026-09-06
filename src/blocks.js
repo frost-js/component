@@ -1,6 +1,7 @@
 /** @import { default as Component } from './component.js'; */
 
 import { bind } from './bind.js';
+import { collectEffects } from './effect-scope.js';
 import { evaluator } from './evaluator.js';
 import { isComponent, skipSubtree } from './helpers.js';
 import { setInitialState } from './state.js';
@@ -236,11 +237,13 @@ export function processLoops(component, loops) {
                 }
 
                 let loopComponent;
+                let dispose;
                 if (previousRecords.has(id)) {
                     const previous = previousRecords.get(id);
                     const state = { ...item };
 
                     loopComponent = previous.component;
+                    dispose = previous.dispose;
 
                     for (const key of previous.stateKeys) {
                         if (!Object.hasOwn(item, key)) {
@@ -264,23 +267,28 @@ export function processLoops(component, loops) {
 
                     const [nestedConditionals, nestedLoops] = parseBlocks(loopComponent);
 
-                    bind(component, loopComponent);
-                    processConditionals(component, nestedConditionals);
-                    processLoops(component, nestedLoops);
+                    dispose = collectEffects(component, () => {
+                        bind(component, loopComponent);
+                        processConditionals(component, nestedConditionals);
+                        processLoops(component, nestedLoops);
+                    });
 
                     end.parentNode.insertBefore(loopComponent, end);
                 }
 
                 loopRecords.set(id, {
                     component: loopComponent,
+                    dispose,
                     stateKeys: Object.keys(item),
                 });
             }
 
-            for (const [id, { component: loopComponent }] of previousRecords) {
+            for (const [id, { component: loopComponent, dispose }] of previousRecords) {
                 if (loopRecords.has(id)) {
                     continue;
                 }
+
+                dispose();
 
                 if (loopComponent.initialized) {
                     loopComponent.element.remove();

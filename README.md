@@ -438,7 +438,7 @@ You can call `Component.bootstrap()` more than once. Omitted options keep the cu
 
 - `component.initialize()`: lifecycle hook after state parsing and DOM placement, before bindings and blocks are activated
 - `component.onConnected()`: lifecycle hook for the initial connection and later shadow-mode reconnections
-- `component.effect(callback, options)`: register a reactive effect
+- `component.effect(callback, options)`: register a reactive effect and return a function to stop it
 - `component.dispatch(name, detail)`: dispatch a bubbling composed custom event
 - `component.deferLoad(promise)`: hold back `loaded` until a promise settles
 - `component.ready(callback)`: run a callback once the component is loaded
@@ -453,6 +453,8 @@ Shadow components call `onConnected()` again when reconnected, without repeating
 ### Effects
 
 `component.effect()` tracks the state reads inside its callback and re-runs when those values change.
+
+Call its returned cleanup function to stop the effect, cancel queued or deferred re-runs, and release its subscriptions. Parent-authored bindings for loop rows are cleaned up automatically when their identifiers are removed; reused or reordered rows keep their bindings.
 
 ```js
 class XCounter extends Component {

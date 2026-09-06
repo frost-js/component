@@ -3,6 +3,7 @@
 import { StateStore, useEffect } from '@fr0st/state';
 import { bind } from './bind.js';
 import { parseBlocks, processConditionals, processLoops } from './blocks.js';
+import { getEffectScope, runInEffectScope } from './effect-scope.js';
 import { parseElements } from './element.js';
 import { findChildren, findParent, isComponent } from './helpers.js';
 import { getShadowStyleBlocks, getShadowStylesheets } from './shadow-assets.js';
@@ -399,21 +400,42 @@ export default class Component extends HTMLElement {
      * @param {() => void} callback The effect callback to register.
      * @param {object} [options] The effect options.
      * @param {boolean} [options.waitForVisible=true] Whether to defer effects until the component is visible.
+     * @returns {() => void} Stops the effect and releases its active and deferred registrations.
      */
     effect(callback, { waitForVisible = true } = {}) {
         const ref = {};
+        const scope = getEffectScope(this);
         const effect = useEffect(() => {
+            if (scope?.disposed) {
+                return;
+            }
+
             if (!this.#mounted || (waitForVisible && !this.#visible)) {
                 this.#pendingEffects.add(ref);
                 return;
             }
 
-            callback();
+            runInEffectScope(this, scope, callback);
         }, { weak: true });
 
         ref.effect = effect;
 
         this.#effects.add(effect);
+
+        const dispose = () => {
+            effect.stop();
+            this.#effects.delete(effect);
+            this.#pendingEffects.delete(ref);
+            scope?.cleanups.delete(dispose);
+        };
+
+        if (scope?.disposed) {
+            dispose();
+        } else {
+            scope?.cleanups.add(dispose);
+        }
+
+        return dispose;
     }
 
     /**

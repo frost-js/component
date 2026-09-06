@@ -1,5 +1,5 @@
 import { expect, test } from '#test';
-import { attachMethod, defineComponent, flushTasks, initializePage, waitForComponent } from '../support/utils.js';
+import { attachMethod, defineComponent, flushTasks, initializePage, updateState, waitForComponent } from '../support/utils.js';
 
 test.describe('Component lifecycle', () => {
     test.beforeEach(async ({ page }) => {
@@ -79,6 +79,54 @@ test.describe('Component lifecycle', () => {
         });
 
         expect(ran).toBe(true);
+    });
+
+    test('disposes effects and cancels queued updates', async ({ page }) => {
+        await defineComponent(page, 'x-component', 'XComponent', '<div></div>');
+        await page.setContent('<x-component></x-component>');
+        await waitForComponent(page, 'x-component');
+
+        await page.evaluate(() => {
+            const component = document.querySelector('[x\\:component="x-component"]').component;
+            component.state.count = 0;
+            window._effectValues = [];
+            const dispose = component.effect(() => window._effectValues.push(component.state.count));
+            component.state.count = 1;
+            dispose();
+            dispose();
+        });
+        await flushTasks(page);
+        await updateState(page, 'x-component', { count: 2 });
+        await flushTasks(page);
+        expect(await page.evaluate(() => window._effectValues)).toEqual([0]);
+    });
+
+    test('does not resume disposed effects on visibility or mount', async ({ page }) => {
+        await defineComponent(page, 'x-component', 'XComponent', '<div></div>');
+        await page.setContent('<x-component></x-component>');
+        await waitForComponent(page, 'x-component');
+
+        await page.evaluate(() => {
+            const component = document.querySelector('[x\\:component="x-component"]').component;
+            component.state.count = 0;
+            window._effectValues = [];
+            window._disposeEffect = component.effect(() => window._effectValues.push(component.state.count));
+            component.dispatchEvent(new Event('invisible'));
+            component.state.count = 1;
+        });
+        await flushTasks(page);
+        await page.evaluate(() => {
+            const component = document.querySelector('[x\\:component="x-component"]').component;
+            window._disposeEffect();
+            component.dispatchEvent(new Event('visible'));
+            component.dispatchEvent(new Event('dismounted'));
+            const dispose = component.effect(() => window._effectValues.push(component.state.count));
+            dispose();
+            component.dispatchEvent(new Event('mounted'));
+        });
+        await updateState(page, 'x-component', { count: 2 });
+        await flushTasks(page);
+        expect(await page.evaluate(() => window._effectValues)).toEqual([0]);
     });
 
     test('ready runs immediately when already loaded and waits otherwise', async ({ page }) => {
