@@ -6,6 +6,67 @@ test.describe('Shadow mode', () => {
         await initializePage(page);
     });
 
+    test('resumes initialization after removal during the first connection', async ({ page }) => {
+        await page.evaluate(() => {
+            window._connections = 0;
+            window._initializations = 0;
+            window._events = [];
+
+            class XRetry extends window.Component {
+                static shadowMode = 'open';
+
+                static get template() {
+                    return '<div id="content">{count}</div>';
+                }
+
+                initialize() {
+                    window._initializations++;
+                    this.state.count = 1;
+                    this.deferLoad(new Promise((resolve) => {
+                        window._resolveLoad = resolve;
+                    }));
+                }
+
+                onConnected() {
+                    window._connections++;
+                }
+            }
+
+            customElements.define('x-retry', XRetry);
+            window.Component.bootstrap();
+            window._host = document.createElement('x-retry');
+            window._host.addEventListener('connected', () => window._host.remove(), { once: true });
+            window._host.addEventListener('initialized', () => window._events.push('initialized'));
+            window._host.addEventListener('loaded', () => window._events.push('loaded'));
+            document.body.appendChild(window._host);
+        });
+
+        await page.waitForFunction(() => window._connections === 1 && !window._host.isConnected);
+        await flushTasks(page);
+        expect(await page.evaluate(() => window._host.initialized)).toBe(false);
+        expect(await page.evaluate(() => window._host.loaded)).toBe(false);
+
+        await page.evaluate(() => document.body.appendChild(window._host));
+
+        await expect(page.locator('#content')).toHaveText('1');
+        expect(await page.evaluate(() => window._host.initialized)).toBe(true);
+        expect(await page.evaluate(() => window._host.loaded)).toBe(false);
+
+        await page.evaluate(() => window._resolveLoad());
+        await page.waitForFunction(() => window._host.loaded);
+
+        await page.evaluate(() => {
+            window._host.remove();
+            document.body.appendChild(window._host);
+        });
+        await flushTasks(page);
+
+        expect(await page.evaluate(() => window._connections)).toBe(3);
+        expect(await page.evaluate(() => window._initializations)).toBe(1);
+        expect(await page.evaluate(() => window._events)).toEqual(['initialized', 'loaded']);
+        await expect(page.locator('#content')).toHaveText('1');
+    });
+
     test('waits for shadow children to load before parent is loaded', async ({ page }) => {
         await page.route('**/components/*', async (route) => {
             const url = route.request().url();

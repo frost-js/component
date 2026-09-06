@@ -408,6 +408,7 @@ export default class Component extends HTMLElement {
      */
     #initializeComponent() {
         if (!this.isConnected || !this.parentNode) {
+            this.#connected = false;
             return;
         }
 

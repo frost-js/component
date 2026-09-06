@@ -1304,7 +1304,10 @@ var Component = class extends HTMLElement {
 	* Initializes the component's DOM, bindings, and lifecycle after its parent is ready.
 	*/
 	#initializeComponent() {
-		if (!this.isConnected || !this.parentNode) return;
+		if (!this.isConnected || !this.parentNode) {
+			this.#connected = false;
+			return;
+		}
 		this.addEventListener("mounted", () => {
 			this.#mounted = true;
 			this.#visible = true;
