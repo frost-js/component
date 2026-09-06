@@ -1256,7 +1256,11 @@
 			}
 			break;
 		}
-		for (const { element } of cases) element.remove();
+		for (const { element, start, end } of cases) {
+			start.slot = element.getAttribute("slot") || "";
+			end.slot = start.slot;
+			element.remove();
+		}
 		return cases;
 	}
 	/**
@@ -1272,6 +1276,8 @@
 		element.removeAttribute("x:id");
 		const start = document.createComment(`each[${iterable}]`);
 		const end = document.createComment(`/each[${iterable}]`);
+		start.slot = element.getAttribute("slot") || "";
+		end.slot = start.slot;
 		element.parentNode.insertBefore(start, element);
 		element.parentNode.insertBefore(end, element);
 		element.remove();
@@ -1362,6 +1368,8 @@
 							start: document.createComment("item"),
 							end: document.createComment("/item")
 						};
+						record.start.slot = start.slot;
+						record.end.slot = end.slot;
 						document.createDocumentFragment().append(record.start, loopComponent, record.end);
 					}
 					if (previousNode.nextSibling !== record.start) {
@@ -1502,7 +1510,7 @@
 	*/
 	function processSlots(component) {
 		for (const element of [...component.childNodes]) {
-			let name = "";
+			let name = element.slot || "";
 			if (element.nodeType === Node.ELEMENT_NODE) name = element.getAttribute("slot") || "";
 			const slot = component.getSlot(name);
 			if (!slot) continue;
@@ -1806,11 +1814,11 @@
 			this.addEventListener("invisible", () => {
 				this.#visible = false;
 			});
+			if (!this.#shadowRoot) processSlots(this);
 			const [conditionals, loops] = parseBlocks(this.#rootElement);
 			parseState(this);
 			if (this.#shadowRoot) this.#shadowRoot.appendChild(this.#rootElement);
 			else {
-				processSlots(this);
 				const slot = this.getAttribute("slot");
 				if (slot !== null) this.#rootElement.setAttribute("slot", slot);
 				this.parentNode.insertBefore(this.#rootElement, this);

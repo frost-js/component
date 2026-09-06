@@ -431,6 +431,11 @@ export default class Component extends HTMLElement {
             this.#visible = false;
         });
 
+        // Discard replaced slot fallbacks before parsing their blocks.
+        if (!this.#shadowRoot) {
+            processSlots(this);
+        }
+
         // extract outer conditionals/loops
         const [conditionals, loops] = parseBlocks(this.#rootElement);
 
@@ -439,8 +444,6 @@ export default class Component extends HTMLElement {
         if (this.#shadowRoot) {
             this.#shadowRoot.appendChild(this.#rootElement);
         } else {
-            processSlots(this);
-
             const slot = this.getAttribute('slot');
             if (slot !== null) {
                 this.#rootElement.setAttribute('slot', slot);

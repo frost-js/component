@@ -121,7 +121,9 @@ function parseConditional(element) {
         break;
     }
 
-    for (const { element } of cases) {
+    for (const { element, start, end } of cases) {
+        start.slot = element.getAttribute('slot') || '';
+        end.slot = start.slot;
         element.remove();
     }
 
@@ -145,6 +147,8 @@ function parseLoop(element) {
 
     const start = document.createComment(`each[${iterable}]`);
     const end = document.createComment(`/each[${iterable}]`);
+    start.slot = element.getAttribute('slot') || '';
+    end.slot = start.slot;
 
     element.parentNode.insertBefore(start, element);
     element.parentNode.insertBefore(end, element);
@@ -275,6 +279,8 @@ export function processLoops(component, loops) {
                         start: document.createComment('item'),
                         end: document.createComment('/item'),
                     };
+                    record.start.slot = start.slot;
+                    record.end.slot = end.slot;
 
                     const fragment = document.createDocumentFragment();
                     fragment.append(record.start, loopComponent, record.end);

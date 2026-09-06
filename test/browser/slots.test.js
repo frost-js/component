@@ -72,6 +72,84 @@ test.describe('Component slots', () => {
         await expect(roots.nth(1).locator('.assigned')).toHaveText('Assigned');
     });
 
+    for (const directive of ['x:if', 'x:each']) {
+        for (const assigned of [false, true]) {
+            test(`${assigned ? 'discards' : 'renders'} slot fallback containing ${directive}`, async ({ page }) => {
+                const errors = [];
+                page.on('pageerror', (error) => errors.push(error.message));
+                await defineComponent(page, 'x-row', 'XRow', '<p class="fallback">Fallback</p>');
+                await defineComponent(page, 'x-parent', 'XParent', `
+                    <div>
+                        <slot>${directive === 'x:if' ? '<p class="fallback" x:if="show">Fallback</p>' : '<x-row x:each="items"></x-row>'}</slot>
+                    </div>
+                `);
+                await page.setContent(`<x-parent show="true" items="[{ id: 1 }]">${assigned ? '<b>Assigned</b>' : ''}</x-parent>`);
+
+                const root = page.locator('[x\\:component="x-parent"]');
+                await expect.poll(() => root.evaluate((element) => element.component.loaded)).toBe(true);
+                await expect(root).toHaveText(assigned ? 'Assigned' : 'Fallback');
+
+                await updateState(page, 'x-parent', { show: false, items: [] });
+                await expect(root).toHaveText(assigned ? 'Assigned' : '');
+                await updateState(page, 'x-parent', { show: true, items: [{ id: 2 }] });
+                await expect(root).toHaveText(assigned ? 'Assigned' : 'Fallback');
+                expect(errors).toEqual([]);
+            });
+        }
+    }
+
+    for (const defaultSlot of [false, true]) {
+        for (const active of [false, true]) {
+            test(`updates named-slot blocks ${defaultSlot ? 'with' : 'without'} a default slot, initially ${active ? 'active' : 'empty'}`, async ({ page }) => {
+                const errors = [];
+                page.on('pageerror', (error) => errors.push(error.message));
+                await defineComponent(page, 'x-shell', 'XShell', `
+                    <section>
+                        <header><slot name="heading"></slot></header>
+                        ${defaultSlot ? '<main><slot></slot></main>' : ''}
+                    </section>
+                `);
+                await defineComponent(page, 'x-row', 'XRow', '<p class="row">{id}<input></p>');
+                await defineComponent(page, 'x-parent', 'XParent', `
+                    <div>
+                        <x-shell>
+                            <h1 class="branch" x:if="{ this.state.mode === 1 }" slot="heading">First</h1>
+                            <h2 class="branch" x:else-if="{ this.state.mode === 2 }" slot="heading">Second</h2>
+                            <p class="branch" x:else slot="heading">Empty</p>
+                            <x-row x:each="items" slot="heading"></x-row>
+                            ${defaultSlot ? '<p id="default">Default</p>' : ''}
+                        </x-shell>
+                    </div>
+                `);
+                await page.setContent(`<x-parent mode="${active ? 1 : 0}" items="${active ? '[{ id: 1 }, { id: 2 }]' : '[]'}"></x-parent>`);
+                await waitForComponent(page, 'x-parent');
+
+                const header = page.locator('header');
+                await expect(header.locator('.branch')).toHaveText(active ? 'First' : 'Empty');
+                await expect(header.locator('.row')).toHaveText(active ? ['1', '2'] : []);
+
+                await updateState(page, 'x-parent', { mode: 2, items: [{ id: 1 }, { id: 2 }] });
+                await expect(header.locator('.branch')).toHaveText('Second');
+                await expect(header.locator('.row')).toHaveText(['1', '2']);
+                await header.locator('input').nth(1).fill('Draft');
+
+                await updateState(page, 'x-parent', { mode: 1, items: [{ id: 2 }, { id: 1 }] });
+                await expect(header.locator('.branch')).toHaveText('First');
+                await expect(header.locator('.row')).toHaveText(['2', '1']);
+                await expect(header.locator('input').nth(0)).toHaveValue('Draft');
+
+                await updateState(page, 'x-parent', { mode: 0, items: [] });
+                await expect(header).toHaveText('Empty');
+                await expect(page.locator('.row')).toHaveCount(0);
+                await updateState(page, 'x-parent', { mode: 1, items: [{ id: 3 }] });
+                await expect(header.locator('.branch')).toHaveText('First');
+                await expect(header.locator('.row')).toHaveText(['3']);
+                await expect(page.locator('main')).toHaveText(defaultSlot ? ['Default'] : []);
+                expect(errors).toEqual([]);
+            });
+        }
+    }
+
     test('keeps nested component bindings in their own scope when slotted', async ({ page }) => {
         await defineComponent(page, 'x-child', 'XChild', '<div>{count}</div>');
         await defineComponent(page, 'x-parent', 'XParent', '<div><slot name="body"></slot></div>');

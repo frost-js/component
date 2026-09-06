@@ -70,7 +70,8 @@ export function parseSlots(element) {
  */
 export function processSlots(component) {
     for (const element of [...component.childNodes]) {
-        let name = '';
+        // Block comments carry the same slot name as their content.
+        let name = element.slot || '';
         if (element.nodeType === Node.ELEMENT_NODE) {
             name = element.getAttribute('slot') || '';
         }
