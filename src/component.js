@@ -6,7 +6,7 @@ import { parseBlocks, processConditionals, processLoops } from './blocks.js';
 import { getEffectScope, runInEffectScope } from './effect-scope.js';
 import { parseElements } from './element.js';
 import { findChildren, findParent, isComponent } from './helpers.js';
-import { getShadowStyleBlocks, getShadowStylesheets } from './shadow-assets.js';
+import { getShadowAssets } from './shadow-assets.js';
 import { parseSlots, processSlots } from './slots.js';
 import { parseState } from './state.js';
 
@@ -70,8 +70,7 @@ export default class Component extends HTMLElement {
 
         if (this.#shadowRoot) {
             const fragment = document.createDocumentFragment();
-            const stylesheets = getShadowStylesheets(this.constructor);
-            const styleBlocks = getShadowStyleBlocks(this.constructor);
+            const { styleBlocks, stylesheets } = getShadowAssets(this.constructor);
 
             for (const stylesheet of stylesheets) {
                 if (!stylesheet.getAttribute('href')?.trim()) {
@@ -359,8 +358,7 @@ export default class Component extends HTMLElement {
             .createContextualFragment(this.constructor.template);
 
         if (this.constructor.shadowMode) {
-            const styleBlocks = getShadowStyleBlocks(this.constructor);
-            const stylesheets = getShadowStylesheets(this.constructor);
+            const { styleBlocks, stylesheets } = getShadowAssets(this.constructor);
 
             for (const node of [...fragment.children]) {
                 if (node.matches('style')) {

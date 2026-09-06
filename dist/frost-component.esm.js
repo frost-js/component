@@ -873,33 +873,27 @@ function parseElements(element) {
 //#endregion
 //#region src/shadow-assets.js
 /** @import { default as Component } from './component.js'; */
-var shadowStyleBlocks = /* @__PURE__ */ new WeakMap();
-var shadowStylesheets = /* @__PURE__ */ new WeakMap();
 /**
-* Gets the cached shadow style blocks for a component class.
-* @param {typeof Component} ComponentClass The component constructor.
-* @returns {HTMLStyleElement[]} The cached style blocks.
+* @typedef {object} ShadowAssets
+* @property {HTMLStyleElement[]} styleBlocks The cached style blocks.
+* @property {HTMLLinkElement[]} stylesheets The cached stylesheet links.
 */
-function getShadowStyleBlocks(ComponentClass) {
-	let styleBlocks = shadowStyleBlocks.get(ComponentClass);
-	if (!styleBlocks) {
-		styleBlocks = [];
-		shadowStyleBlocks.set(ComponentClass, styleBlocks);
-	}
-	return styleBlocks;
-}
+var shadowAssets = /* @__PURE__ */ new WeakMap();
 /**
-* Gets the cached shadow stylesheets for a component class.
+* Gets the cached shadow assets for a component class.
 * @param {typeof Component} ComponentClass The component constructor.
-* @returns {HTMLLinkElement[]} The cached stylesheet links.
+* @returns {ShadowAssets} The cached style blocks and stylesheet links.
 */
-function getShadowStylesheets(ComponentClass) {
-	let stylesheets = shadowStylesheets.get(ComponentClass);
-	if (!stylesheets) {
-		stylesheets = [];
-		shadowStylesheets.set(ComponentClass, stylesheets);
+function getShadowAssets(ComponentClass) {
+	let assets = shadowAssets.get(ComponentClass);
+	if (!assets) {
+		assets = {
+			styleBlocks: [],
+			stylesheets: []
+		};
+		shadowAssets.set(ComponentClass, assets);
 	}
-	return stylesheets;
+	return assets;
 }
 /**
 * Sets the cached shadow assets for a component class.
@@ -909,8 +903,10 @@ function getShadowStylesheets(ComponentClass) {
 * @param {Iterable<HTMLLinkElement>} [options.stylesheets=[]] The shadow stylesheet links.
 */
 function setShadowAssets(ComponentClass, { styleBlocks = [], stylesheets = [] } = {}) {
-	shadowStyleBlocks.set(ComponentClass, [...styleBlocks]);
-	shadowStylesheets.set(ComponentClass, [...stylesheets]);
+	shadowAssets.set(ComponentClass, {
+		styleBlocks: [...styleBlocks],
+		stylesheets: [...stylesheets]
+	});
 }
 
 //#endregion
@@ -1023,8 +1019,7 @@ var Component = class extends HTMLElement {
 		this.#slots = this.#shadowRoot ? {} : parseSlots(this.#rootElement);
 		if (this.#shadowRoot) {
 			const fragment = document.createDocumentFragment();
-			const stylesheets = getShadowStylesheets(this.constructor);
-			const styleBlocks = getShadowStyleBlocks(this.constructor);
+			const { styleBlocks, stylesheets } = getShadowAssets(this.constructor);
 			for (const stylesheet of stylesheets) {
 				if (!stylesheet.getAttribute("href")?.trim()) continue;
 				fragment.appendChild(stylesheet.cloneNode(true));
@@ -1231,8 +1226,7 @@ var Component = class extends HTMLElement {
 	render() {
 		const fragment = document.createRange().createContextualFragment(this.constructor.template);
 		if (this.constructor.shadowMode) {
-			const styleBlocks = getShadowStyleBlocks(this.constructor);
-			const stylesheets = getShadowStylesheets(this.constructor);
+			const { styleBlocks, stylesheets } = getShadowAssets(this.constructor);
 			for (const node of [...fragment.children]) if (node.matches("style")) {
 				if (!styleBlocks.some((block) => block.isEqualNode(node))) styleBlocks.push(node);
 				node.remove();

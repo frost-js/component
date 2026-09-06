@@ -1,38 +1,27 @@
 /** @import { default as Component } from './component.js'; */
 
-const shadowStyleBlocks = new WeakMap();
-const shadowStylesheets = new WeakMap();
+/**
+ * @typedef {object} ShadowAssets
+ * @property {HTMLStyleElement[]} styleBlocks The cached style blocks.
+ * @property {HTMLLinkElement[]} stylesheets The cached stylesheet links.
+ */
+
+const shadowAssets = new WeakMap();
 
 /**
- * Gets the cached shadow style blocks for a component class.
+ * Gets the cached shadow assets for a component class.
  * @param {typeof Component} ComponentClass The component constructor.
- * @returns {HTMLStyleElement[]} The cached style blocks.
+ * @returns {ShadowAssets} The cached style blocks and stylesheet links.
  */
-export function getShadowStyleBlocks(ComponentClass) {
-    let styleBlocks = shadowStyleBlocks.get(ComponentClass);
+export function getShadowAssets(ComponentClass) {
+    let assets = shadowAssets.get(ComponentClass);
 
-    if (!styleBlocks) {
-        styleBlocks = [];
-        shadowStyleBlocks.set(ComponentClass, styleBlocks);
+    if (!assets) {
+        assets = { styleBlocks: [], stylesheets: [] };
+        shadowAssets.set(ComponentClass, assets);
     }
 
-    return styleBlocks;
-};
-
-/**
- * Gets the cached shadow stylesheets for a component class.
- * @param {typeof Component} ComponentClass The component constructor.
- * @returns {HTMLLinkElement[]} The cached stylesheet links.
- */
-export function getShadowStylesheets(ComponentClass) {
-    let stylesheets = shadowStylesheets.get(ComponentClass);
-
-    if (!stylesheets) {
-        stylesheets = [];
-        shadowStylesheets.set(ComponentClass, stylesheets);
-    }
-
-    return stylesheets;
+    return assets;
 };
 
 /**
@@ -43,6 +32,8 @@ export function getShadowStylesheets(ComponentClass) {
  * @param {Iterable<HTMLLinkElement>} [options.stylesheets=[]] The shadow stylesheet links.
  */
 export function setShadowAssets(ComponentClass, { styleBlocks = [], stylesheets = [] } = {}) {
-    shadowStyleBlocks.set(ComponentClass, [...styleBlocks]);
-    shadowStylesheets.set(ComponentClass, [...stylesheets]);
+    shadowAssets.set(ComponentClass, {
+        styleBlocks: [...styleBlocks],
+        stylesheets: [...stylesheets],
+    });
 };
