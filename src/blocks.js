@@ -25,17 +25,22 @@ import { setInitialState } from './state.js';
 
 /**
  * Parses top-level conditional and loop blocks from an element subtree.
- * @param {Element} element The root element to parse.
+ * @param {Element|Comment} element The root element or fallback start marker to parse.
  * @param {ConditionalCase[][]} [conditionals=[]] The collected conditional blocks.
  * @param {LoopBlock[]} [loops=[]] The collected loop blocks.
  * @returns {[ConditionalCase[][], LoopBlock[]]} The collected conditionals and loops.
  */
 export function parseBlocks(element, conditionals = [], loops = []) {
+    const end = element.nodeType === Node.COMMENT_NODE ? element.fallback.end : null;
     const walker = document.createTreeWalker(
-        element,
-        NodeFilter.SHOW_ELEMENT,
+        end ? element.parentNode : element,
+        NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_COMMENT,
         {
             acceptNode(node) {
+                if (node.nodeType === Node.COMMENT_NODE) {
+                    return node === end || node.fallback ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+                }
+
                 if (node.hasAttribute('x:else') || node.hasAttribute('x:else-if')) {
                     return NodeFilter.FILTER_REJECT;
                 }
@@ -48,10 +53,16 @@ export function parseBlocks(element, conditionals = [], loops = []) {
     );
 
     const nodes = [];
+    walker.currentNode = element;
     let node = walker.nextNode();
-    while (node) {
-        nodes.push(node);
-        node = skipSubtree(walker);
+    while (node && node !== end) {
+        if (node.nodeType === Node.COMMENT_NODE) {
+            walker.currentNode = node.fallback.end;
+            node = walker.nextNode();
+        } else {
+            nodes.push(node);
+            node = skipSubtree(walker);
+        }
     }
 
     for (const node of nodes) {

@@ -1,5 +1,9 @@
 /** @import { default as Component } from './component.js'; */
 
+import { bind } from './bind.js';
+import { parseBlocks, processConditionals, processLoops } from './blocks.js';
+import { collectEffects, getEffectScope } from './effect-scope.js';
+
 /**
  * @typedef {object} SlotDefinition
  * @property {Comment} start The start marker for the slot.
@@ -21,20 +25,16 @@ export function parseSlots(element) {
             const start = document.createComment(`slot[${name}]`);
             const end = document.createComment(`/slot[${name}]`);
 
-            let hasAssigned = false;
+            const fallback = slot.hasChildNodes() ? createFallback(start, end) : null;
+            start.fallback = fallback;
+
             const assign = (node) => {
                 if (!end.parentNode) {
                     return;
                 }
 
-                if (!hasAssigned) {
-                    while (start.nextSibling !== end) {
-                        start.nextSibling.remove();
-                    }
-                    hasAssigned = true;
-                }
-
                 end.before(node);
+                fallback?.update();
             };
 
             const assigned = () => {
@@ -45,7 +45,9 @@ export function parseSlots(element) {
                         break;
                     }
 
-                    nodes.push(current);
+                    if (current !== fallback?.end) {
+                        nodes.push(current);
+                    }
                 }
 
                 return nodes;
@@ -55,6 +57,11 @@ export function parseSlots(element) {
             while (slot.firstChild) {
                 slot.parentNode.insertBefore(slot.firstChild, slot);
             }
+
+            if (fallback) {
+                slot.parentNode.insertBefore(fallback.end, slot);
+            }
+
             slot.parentNode.insertBefore(end, slot);
             slot.remove();
 
@@ -62,6 +69,69 @@ export function parseSlots(element) {
         });
 
     return Object.fromEntries(slotMarkers);
+};
+
+/**
+ * Creates a fallback boundary with its own bindings and assignment watcher.
+ * @param {Comment} start The slot's start marker.
+ * @param {Comment} end The slot's end marker.
+ * @returns {object} The fallback boundary and its binding and update callbacks.
+ */
+function createFallback(start, end) {
+    const fallbackEnd = document.createComment('/fallback');
+    let active = true;
+    let dispose;
+    let observer;
+
+    const update = () => {
+        if (!active) {
+            return;
+        }
+
+        observer?.disconnect();
+
+        let current = fallbackEnd;
+        while ((current = current.nextSibling) && current !== end) {
+            if (current.nodeType !== Node.ELEMENT_NODE && current.nodeType !== Node.TEXT_NODE) {
+                continue;
+            }
+
+            active = false;
+            dispose?.();
+            while (start.nextSibling !== fallbackEnd) {
+                start.nextSibling.remove();
+            }
+
+            return;
+        }
+
+        // Blocks insert content directly between their assigned comment markers.
+        if (end.parentNode) {
+            observer ??= new MutationObserver(update);
+            observer.observe(end.parentNode, { childList: true });
+        }
+    };
+
+    const bindFallback = (component) => {
+        if (!active || dispose) {
+            return;
+        }
+
+        // Assignment must stop nested blocks and bindings before removing their nodes.
+        const [conditionals, loops] = parseBlocks(start);
+        dispose = collectEffects(component, () => {
+            getEffectScope(component).cleanups.add(() => observer?.disconnect());
+            bind(component, start);
+            processConditionals(component, conditionals);
+            processLoops(component, loops);
+        }, () => active);
+
+        if (!active) {
+            dispose();
+        }
+    };
+
+    return { end: fallbackEnd, bind: bindFallback, update };
 };
 
 /**

@@ -387,11 +387,12 @@ var boundTextNodes = /* @__PURE__ */ new WeakSet();
 /**
 * Binds an element subtree to a component.
 * @param {Component} component The component that owns bindings.
-* @param {Element} element The element subtree to bind.
+* @param {Element|Comment} element The root element or fallback start marker to bind.
 */
 function bind(component, element) {
 	if (element.component && element.component !== component) return;
-	const walker = document.createTreeWalker(element, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+	const end = element.nodeType === Node.COMMENT_NODE ? element.fallback.end : null;
+	const walker = document.createTreeWalker(end ? element.parentNode : element, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT | NodeFilter.SHOW_COMMENT);
 	const bindElement = (node) => {
 		for (const { name, value } of [...node.attributes]) {
 			if (name.startsWith(".")) bindProperty(component, node, name, value);
@@ -400,8 +401,9 @@ function bind(component, element) {
 			if (name.startsWith("x:bind")) bindInput(component, node, name, value);
 		}
 	};
-	let node = walker.currentNode;
-	while (node) {
+	walker.currentNode = element;
+	let node = end ? walker.nextNode() : element;
+	while (node && node !== end) {
 		if (node.nodeType === Node.ELEMENT_NODE) {
 			if (node.component && node.component !== component) {
 				node = skipSubtree(walker);
@@ -409,6 +411,10 @@ function bind(component, element) {
 			}
 			bindElement(node);
 		} else if (node.nodeType === Node.TEXT_NODE) bindText(component, node);
+		else if (node.fallback) {
+			node.fallback.bind(component);
+			walker.currentNode = node.fallback.end;
+		}
 		node = walker.nextNode();
 	}
 }
@@ -734,19 +740,25 @@ function bindText(component, node) {
 */
 /**
 * Parses top-level conditional and loop blocks from an element subtree.
-* @param {Element} element The root element to parse.
+* @param {Element|Comment} element The root element or fallback start marker to parse.
 * @param {ConditionalCase[][]} [conditionals=[]] The collected conditional blocks.
 * @param {LoopBlock[]} [loops=[]] The collected loop blocks.
 * @returns {[ConditionalCase[][], LoopBlock[]]} The collected conditionals and loops.
 */
 function parseBlocks(element, conditionals = [], loops = []) {
-	const walker = document.createTreeWalker(element, NodeFilter.SHOW_ELEMENT, { acceptNode(node) {
+	const end = element.nodeType === Node.COMMENT_NODE ? element.fallback.end : null;
+	const walker = document.createTreeWalker(end ? element.parentNode : element, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_COMMENT, { acceptNode(node) {
+		if (node.nodeType === Node.COMMENT_NODE) return node === end || node.fallback ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
 		if (node.hasAttribute("x:else") || node.hasAttribute("x:else-if")) return NodeFilter.FILTER_REJECT;
 		return node.hasAttribute("x:if") || node.hasAttribute("x:each") ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
 	} });
 	const nodes = [];
+	walker.currentNode = element;
 	let node = walker.nextNode();
-	while (node) {
+	while (node && node !== end) if (node.nodeType === Node.COMMENT_NODE) {
+		walker.currentNode = node.fallback.end;
+		node = walker.nextNode();
+	} else {
 		nodes.push(node);
 		node = skipSubtree(walker);
 	}
@@ -1027,26 +1039,25 @@ function parseSlots(element) {
 		const name = slot.getAttribute("name") || "";
 		const start = document.createComment(`slot[${name}]`);
 		const end = document.createComment(`/slot[${name}]`);
-		let hasAssigned = false;
+		const fallback = slot.hasChildNodes() ? createFallback(start, end) : null;
+		start.fallback = fallback;
 		const assign = (node) => {
 			if (!end.parentNode) return;
-			if (!hasAssigned) {
-				while (start.nextSibling !== end) start.nextSibling.remove();
-				hasAssigned = true;
-			}
 			end.before(node);
+			fallback?.update();
 		};
 		const assigned = () => {
 			let current = start;
 			const nodes = [];
 			while (current = current.nextSibling) {
 				if (current.isSameNode(end)) break;
-				nodes.push(current);
+				if (current !== fallback?.end) nodes.push(current);
 			}
 			return nodes;
 		};
 		slot.parentNode.insertBefore(start, slot);
 		while (slot.firstChild) slot.parentNode.insertBefore(slot.firstChild, slot);
+		if (fallback) slot.parentNode.insertBefore(fallback.end, slot);
 		slot.parentNode.insertBefore(end, slot);
 		slot.remove();
 		return [name, {
@@ -1057,6 +1068,50 @@ function parseSlots(element) {
 		}];
 	});
 	return Object.fromEntries(slotMarkers);
+}
+/**
+* Creates a fallback boundary with its own bindings and assignment watcher.
+* @param {Comment} start The slot's start marker.
+* @param {Comment} end The slot's end marker.
+* @returns {object} The fallback boundary and its binding and update callbacks.
+*/
+function createFallback(start, end) {
+	const fallbackEnd = document.createComment("/fallback");
+	let active = true;
+	let dispose;
+	let observer;
+	const update = () => {
+		if (!active) return;
+		observer?.disconnect();
+		let current = fallbackEnd;
+		while ((current = current.nextSibling) && current !== end) {
+			if (current.nodeType !== Node.ELEMENT_NODE && current.nodeType !== Node.TEXT_NODE) continue;
+			active = false;
+			dispose?.();
+			while (start.nextSibling !== fallbackEnd) start.nextSibling.remove();
+			return;
+		}
+		if (end.parentNode) {
+			observer ??= new MutationObserver(update);
+			observer.observe(end.parentNode, { childList: true });
+		}
+	};
+	const bindFallback = (component) => {
+		if (!active || dispose) return;
+		const [conditionals, loops] = parseBlocks(start);
+		dispose = collectEffects(component, () => {
+			getEffectScope(component).cleanups.add(() => observer?.disconnect());
+			bind(component, start);
+			processConditionals(component, conditionals);
+			processLoops(component, loops);
+		}, () => active);
+		if (!active) dispose();
+	};
+	return {
+		end: fallbackEnd,
+		bind: bindFallback,
+		update
+	};
 }
 /**
 * Moves a component's light-DOM children into their matching slot markers.

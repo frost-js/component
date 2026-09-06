@@ -48,16 +48,17 @@ const boundTextNodes = new WeakSet();
 /**
  * Binds an element subtree to a component.
  * @param {Component} component The component that owns bindings.
- * @param {Element} element The element subtree to bind.
+ * @param {Element|Comment} element The root element or fallback start marker to bind.
  */
 export function bind(component, element) {
     if (element.component && element.component !== component) {
         return;
     }
 
+    const end = element.nodeType === Node.COMMENT_NODE ? element.fallback.end : null;
     const walker = document.createTreeWalker(
-        element,
-        NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT,
+        end ? element.parentNode : element,
+        NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT | NodeFilter.SHOW_COMMENT,
     );
 
     const bindElement = (node) => {
@@ -74,8 +75,9 @@ export function bind(component, element) {
         }
     };
 
-    let node = walker.currentNode;
-    while (node) {
+    walker.currentNode = element;
+    let node = end ? walker.nextNode() : element;
+    while (node && node !== end) {
         if (node.nodeType === Node.ELEMENT_NODE) {
             if (node.component && node.component !== component) {
                 // Skip subtrees owned by other components.
@@ -86,6 +88,9 @@ export function bind(component, element) {
             bindElement(node);
         } else if (node.nodeType === Node.TEXT_NODE) {
             bindText(component, node);
+        } else if (node.fallback) {
+            node.fallback.bind(component);
+            walker.currentNode = node.fallback.end;
         }
 
         node = walker.nextNode();
