@@ -46,6 +46,48 @@ test.describe('Suspense component', () => {
         await expect(page.locator('#child')).toHaveText('ready');
     });
 
+    test('waits for children added while showing the fallback', async ({ page }) => {
+        await defineComponent(page, 'x-delay', 'XDelay', '<div class="child">ready</div>');
+        await attachMethod(page, 'XDelay', 'initialize', function() {
+            this.deferLoad(new Promise((resolve) => {
+                window._pending.push({ child: this, resolve });
+            }));
+        });
+
+        await page.evaluate(() => {
+            window._pending = [];
+            window.Component.bootstrap();
+            document.body.innerHTML = `
+                <x-suspense>
+                    <template slot="fallback">
+                        <div id="fallback">loading</div>
+                    </template>
+                    <x-delay></x-delay>
+                </x-suspense>
+            `;
+        });
+
+        await page.waitForFunction(() => window._pending.length === 1);
+        await page.evaluate(() => {
+            const suspense = document.querySelector('[x\\:component="x-suspense"]').component;
+            suspense.getSlot().assign(document.createElement('x-delay'));
+        });
+        await page.waitForFunction(() => window._pending.length === 2);
+
+        await page.evaluate(() => window._pending[0].resolve());
+        await flushTasks(page);
+
+        expect(await page.evaluate(() => window._pending.map(({ child }) => child.loaded))).toEqual([true, false]);
+        await expect(page.locator('#fallback')).toBeVisible();
+        await expect(page.locator('.child').nth(1)).toBeHidden();
+
+        await page.evaluate(() => window._pending[1].resolve());
+
+        await expect(page.locator('#fallback')).toHaveCount(0);
+        await expect(page.locator('.child')).toHaveCount(2);
+        await expect(page.locator('.child').nth(1)).toBeVisible();
+    });
+
     test('unwraps when a pending child is removed without finishing its load', async ({ page }) => {
         await defineComponent(page, 'x-delay', 'XDelay', '<div id="child">pending</div>');
         await attachMethod(page, 'XDelay', 'initialize', function() {

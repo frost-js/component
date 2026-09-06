@@ -37,6 +37,10 @@ function waitForChildren(component, element = component.rootElement) {
 				child.removeEventListener("loaded", check);
 				return false;
 			});
+			for (const child of children) if (!child.loaded && !pendingChildren.includes(child)) {
+				pendingChildren.push(child);
+				child.addEventListener("loaded", check, { once: true });
+			}
 			if (pendingChildren.length) return;
 			observer.disconnect();
 			resolve();

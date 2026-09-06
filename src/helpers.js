@@ -58,6 +58,13 @@ export function waitForChildren(component, element = component.rootElement) {
                 return false;
             });
 
+            for (const child of children) {
+                if (!child.loaded && !pendingChildren.includes(child)) {
+                    pendingChildren.push(child);
+                    child.addEventListener('loaded', check, { once: true });
+                }
+            }
+
             if (pendingChildren.length) {
                 return;
             }

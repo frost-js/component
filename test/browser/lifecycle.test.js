@@ -325,6 +325,48 @@ test.describe('Component lifecycle', () => {
         });
     });
 
+    for (const completion of ['loads', 'is removed']) {
+        test(`tracks a child added while loading until it ${completion}`, async ({ page }) => {
+            await defineComponent(page, 'x-child', 'XChild', '<div></div>');
+            await attachMethod(page, 'XChild', 'initialize', function() {
+                this.deferLoad(new Promise((resolve) => {
+                    window._pending.push({ child: this, resolve });
+                }));
+            });
+            await defineComponent(page, 'x-parent', 'XParent', '<div><x-child></x-child><x-child x:if="show"></x-child></div>');
+
+            await page.evaluate(() => {
+                window._pending = [];
+                window._loadedCount = 0;
+                window._parent = document.createElement('x-parent');
+                window._parent.setAttribute('show', 'false');
+                window._parent.addEventListener('loaded', () => window._loadedCount++);
+                document.body.appendChild(window._parent);
+            });
+
+            await page.waitForFunction(() => window._pending.length === 1);
+            await updateState(page, 'x-parent', { show: true });
+            await page.waitForFunction(() => window._pending.length === 2);
+
+            await page.evaluate(() => window._pending[0].resolve());
+            await flushTasks(page);
+
+            expect(await page.evaluate(() => window._pending.map(({ child }) => child.loaded))).toEqual([true, false]);
+            expect(await page.evaluate(() => window._parent.loaded)).toBe(false);
+            expect(await page.evaluate(() => window._loadedCount)).toBe(0);
+
+            if (completion === 'loads') {
+                await page.evaluate(() => window._pending[1].resolve());
+            } else {
+                await updateState(page, 'x-parent', { show: false });
+            }
+
+            await page.waitForFunction(() => window._parent.loaded);
+            expect(await page.evaluate(() => window._loadedCount)).toBe(1);
+            expect(await page.evaluate(() => window._pending[1].child.loaded)).toBe(completion === 'loads');
+        });
+    }
+
     test('throws when a component is reattached after initialization', async ({ page }) => {
         await defineComponent(page, 'x-component', 'XComponent', '<div></div>');
 
