@@ -1284,7 +1284,7 @@
 						}, () => condition === getActiveCondition());
 						condition.attached = true;
 					}
-					condition.end.parentNode.insertBefore(condition.element, condition.end);
+					if (condition.element.nextSibling !== condition.end) condition.end.parentNode.insertBefore(condition.element, condition.end);
 				} else condition.element.remove();
 			});
 		}

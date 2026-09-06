@@ -15,6 +15,35 @@ test.describe('Component blocks', () => {
         await expect(root.locator('#b')).toHaveCount(0);
     });
 
+    test('preserves input focus when the active conditional branch is unchanged', async ({ page }) => {
+        await defineComponent(page, 'x-component', 'XComponent', `
+            <div>
+                <section x:if="{ this.state.count > 0 }">
+                    <input value="Draft text">
+                    <span>{count}</span>
+                </section>
+            </div>
+        `);
+        await page.setContent('<x-component count="1"></x-component>');
+
+        const input = page.locator('input');
+        await expect(page.locator('section span')).toHaveText('1');
+        await input.focus();
+        await input.evaluate((element) => element.setSelectionRange(1, 4));
+
+        await updateState(page, 'x-component', { count: 2 });
+
+        await expect(page.locator('section span')).toHaveText('2');
+        await expect(input).toBeFocused();
+        expect(await input.evaluate((element) => [element.selectionStart, element.selectionEnd])).toEqual([1, 4]);
+
+        await updateState(page, 'x-component', { count: 0 });
+        await expect(input).toHaveCount(0);
+        await updateState(page, 'x-component', { count: 1 });
+        await expect(page.locator('section span')).toHaveText('1');
+        await expect(input).toHaveValue('Draft text');
+    });
+
     test('renders x:else branch when condition becomes false', async ({ page }) => {
         await defineComponent(page, 'x-component', 'XComponent', '<div><span id="a" x:if="show">A</span><span id="b" x:else>B</span></div>');
         await page.setContent('<x-component show="true"></x-component>');
