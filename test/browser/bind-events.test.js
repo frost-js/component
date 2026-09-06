@@ -308,6 +308,74 @@ test.describe('Component event bindings', () => {
         });
     });
 
+    for (const modifier of ['', '.once']) {
+        test(`transfers custom event handlers${modifier} across late-defined roots`, async ({ page }) => {
+            await defineComponent(page, 'x-wrapper', 'XWrapper', '<x-middle></x-middle>');
+            await defineComponent(page, 'x-parent', 'XParent', `<div><x-wrapper @save${modifier}="(window._handlerCreations++, (event) => { this.state.calls = (this.state.calls || 0) + 1; this.state.currentTargetId = event.currentTarget.id; })"></x-wrapper></div>`);
+            await page.evaluate(() => {
+                window._handlerCreations = 0;
+                window._parent = document.createElement('x-parent');
+                window._wrapper = window._parent.rootElement.querySelector('x-wrapper');
+                document.body.appendChild(window._parent);
+            });
+            await page.waitForFunction(() => window._wrapper.initialized);
+            await page.evaluate(() => {
+                window._middle = document.querySelector('x-middle');
+            });
+
+            await defineComponent(page, 'x-middle', 'XMiddle', '<x-leaf></x-leaf>');
+            await page.waitForFunction(() => window._middle.initialized);
+            await page.evaluate(() => {
+                window._leaf = document.querySelector('x-leaf');
+            });
+
+            await defineComponent(page, 'x-leaf', 'XLeaf', '<button id="save" @click="{ this.dispatch(\'save\') }">save</button>');
+            await waitForComponent(page, 'x-parent');
+            await page.getByRole('button', { name: 'save' }).click();
+            await page.getByRole('button', { name: 'save' }).click();
+
+            const result = await page.evaluate(() => {
+                for (const element of [window._wrapper, window._middle, window._leaf]) {
+                    element.dispatchEvent(new Event('save'));
+                }
+
+                return {
+                    calls: window._parent.state.calls,
+                    currentTargetId: window._parent.state.currentTargetId,
+                    handlerCreations: window._handlerCreations,
+                };
+            });
+
+            expect(result).toEqual({
+                calls: modifier ? 1 : 2,
+                currentTargetId: 'save',
+                handlerCreations: 1,
+            });
+        });
+    }
+
+    test('does not reattach a consumed once handler after a late-defined root initializes', async ({ page }) => {
+        await defineComponent(page, 'x-wrapper', 'XWrapper', '<x-leaf></x-leaf>');
+        await defineComponent(page, 'x-parent', 'XParent', '<div><x-wrapper @save.once="{ this.state.calls = (this.state.calls || 0) + 1; }"></x-wrapper></div>');
+        await page.evaluate(() => {
+            window._parent = document.createElement('x-parent');
+            window._wrapper = window._parent.rootElement.querySelector('x-wrapper');
+            document.body.appendChild(window._parent);
+        });
+        await page.waitForFunction(() => window._wrapper.initialized);
+        await page.locator('x-leaf').evaluate((element) => {
+            element.dispatchEvent(new Event('save'));
+        });
+        expect(await page.evaluate(() => window._parent.state.calls)).toBe(1);
+
+        await defineComponent(page, 'x-leaf', 'XLeaf', '<button @click="{ this.dispatch(\'save\') }">save</button>');
+        await waitForComponent(page, 'x-parent');
+        await page.getByRole('button', { name: 'save' }).click();
+        await page.getByRole('button', { name: 'save' }).click();
+
+        expect(await page.evaluate(() => window._parent.state.calls)).toBe(1);
+    });
+
     test('binds bubbled custom events on child component hosts', async ({ page }) => {
         await defineComponent(page, 'x-item', 'XItem', '<button id="remove" @click="{ this.dispatch(\'remove\') }">remove</button>');
         await defineComponent(page, 'x-list', 'XList', '<ul><slot></slot></ul>');

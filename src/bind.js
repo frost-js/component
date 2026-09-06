@@ -290,21 +290,25 @@ function bindEvent(component, element, name, value) {
         passive: params.includes('passive'),
     };
 
-    element.addEventListener(eventName, handler, options);
+    const attach = (target) => {
+        target.addEventListener(eventName, handler, options);
 
-    if (isComponent(element.localName) && !element.initialized) {
-        element.addEventListener('initialized', () => {
-            if (once && ran) {
-                return;
-            }
+        if (isComponent(target.localName) && !target.initialized) {
+            target.addEventListener('initialized', () => {
+                if (once && ran) {
+                    return;
+                }
 
-            const target = element.element;
-            if (target !== element) {
-                element.removeEventListener(eventName, handler, options);
-                target.addEventListener(eventName, handler, options);
-            }
-        }, { once: true });
-    }
+                const root = target.element;
+                if (root !== target) {
+                    target.removeEventListener(eventName, handler, options);
+                    attach(root);
+                }
+            }, { once: true });
+        }
+    };
+
+    attach(element);
 };
 
 /**
