@@ -466,6 +466,37 @@
 		return components;
 	}
 	/**
+	* Waits for pending child components to load or be removed.
+	* @param {Component} component The root component.
+	* @param {Element} [element=component.rootElement] The element containing the children.
+	* @returns {Promise<void>} A promise that resolves when no pending children remain.
+	*/
+	function waitForChildren(component, element = component.rootElement) {
+		let pendingChildren = findChildren(component, element).filter((child) => !child.loaded);
+		if (!pendingChildren.length) return Promise.resolve();
+		return new Promise((resolve) => {
+			const check = () => {
+				const children = findChildren(component, element);
+				pendingChildren = pendingChildren.filter((child) => {
+					if (child.loaded) return false;
+					if (children.includes(child)) return true;
+					child.removeEventListener("loaded", check);
+					return false;
+				});
+				if (pendingChildren.length) return;
+				observer.disconnect();
+				resolve();
+			};
+			const observer = new MutationObserver(check);
+			observer.observe(element, {
+				childList: true,
+				subtree: true
+			});
+			for (const child of pendingChildren) child.addEventListener("loaded", check, { once: true });
+			check();
+		});
+	}
+	/**
 	* Finds the components represented by a public DOM element.
 	* @param {Element} element The public element to inspect.
 	* @returns {Component[]} The components represented by the element, from inner to outer.
@@ -1750,39 +1781,10 @@
 			processLoops(this, loops);
 			const event = new Event("initialized");
 			this.dispatchEvent(event);
-			this.#waitForChildren().then(() => this.#waitForLoadGates()).then(() => {
+			waitForChildren(this).then(() => this.#waitForLoadGates()).then(() => {
 				this.#loaded = true;
 				const event = new Event("loaded");
 				this.dispatchEvent(event);
-			});
-		}
-		/**
-		* Waits for pending child components to load or be removed.
-		* @returns {Promise<void>} A promise that resolves when no pending children remain.
-		*/
-		#waitForChildren() {
-			let pendingChildren = this.childComponents.filter((component) => !component.loaded);
-			if (!pendingChildren.length) return Promise.resolve();
-			return new Promise((resolve) => {
-				const check = () => {
-					const children = this.childComponents;
-					pendingChildren = pendingChildren.filter((child) => {
-						if (child.loaded) return false;
-						if (children.includes(child)) return true;
-						child.removeEventListener("loaded", check);
-						return false;
-					});
-					if (pendingChildren.length) return;
-					observer.disconnect();
-					resolve();
-				};
-				const observer = new MutationObserver(check);
-				observer.observe(this.renderRoot, {
-					childList: true,
-					subtree: true
-				});
-				for (const child of pendingChildren) child.addEventListener("loaded", check, { once: true });
-				check();
 			});
 		}
 		/**
@@ -1972,10 +1974,7 @@
 		initialize() {
 			super.initialize();
 			for (const template of [...this.fallback.querySelectorAll("template")]) template.replaceWith(template.content.cloneNode(true));
-			const pending = findChildren(this, this.content).filter((child) => !child.loaded).map((child) => new Promise((resolve) => {
-				child.addEventListener("loaded", resolve, { once: true });
-			}));
-			Promise.all(pending).then(() => {
+			waitForChildren(this, this.content).then(() => {
 				if (!this.rootElement.parentNode) return;
 				const nodes = this.getSlot().assigned();
 				for (const node of nodes) this.rootElement.parentNode.insertBefore(node, this.rootElement);

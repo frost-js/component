@@ -1,5 +1,5 @@
 import { expect, test } from '#test';
-import { attachMethod, defineComponent, initializePage } from '../support/utils.js';
+import { attachMethod, defineComponent, flushTasks, initializePage } from '../support/utils.js';
 
 test.describe('Suspense component', () => {
     test.beforeEach(async ({ page }) => {
@@ -44,6 +44,111 @@ test.describe('Suspense component', () => {
 
         await expect(page.locator('#fallback')).toHaveCount(0);
         await expect(page.locator('#child')).toHaveText('ready');
+    });
+
+    test('unwraps when a pending child is removed without finishing its load', async ({ page }) => {
+        await defineComponent(page, 'x-delay', 'XDelay', '<div id="child">pending</div>');
+        await attachMethod(page, 'XDelay', 'initialize', function() {
+            this.deferLoad(new Promise(() => {}));
+            window._child = this;
+        });
+
+        await page.evaluate(() => {
+            window.Component.bootstrap();
+            document.body.innerHTML = `
+                <x-suspense>
+                    <template slot="fallback">
+                        <div id="fallback">loading</div>
+                    </template>
+                    <x-delay></x-delay>
+                    <div id="content">remaining</div>
+                </x-suspense>
+            `;
+        });
+
+        await page.waitForFunction(() => window._child?.initialized);
+        await expect(page.locator('#fallback')).toBeVisible();
+        await expect(page.locator('#content')).toBeHidden();
+
+        await page.evaluate(() => window._child.element.remove());
+
+        await expect(page.locator('#fallback')).toHaveCount(0);
+        await expect(page.locator('#content')).toBeVisible();
+        await expect(page.locator('#child')).toHaveCount(0);
+        expect(await page.evaluate(() => window._child.loaded)).toBe(false);
+    });
+
+    test('keeps waiting for remaining children after a pending child is removed', async ({ page }) => {
+        await defineComponent(page, 'x-delay', 'XDelay', '<div>pending</div>');
+        await attachMethod(page, 'XDelay', 'initialize', function() {
+            this.deferLoad(new Promise((resolve) => {
+                window._pending.push({ child: this, resolve });
+            }));
+        });
+
+        await page.evaluate(() => {
+            window._pending = [];
+            window.Component.bootstrap();
+            document.body.innerHTML = `
+                <x-suspense>
+                    <template slot="fallback">
+                        <div id="fallback">loading</div>
+                    </template>
+                    <x-delay></x-delay>
+                    <x-delay></x-delay>
+                    <div id="content">remaining</div>
+                </x-suspense>
+            `;
+        });
+
+        await page.waitForFunction(() => window._pending.length === 2);
+        await page.evaluate(() => window._pending[0].child.element.remove());
+        await flushTasks(page);
+
+        await expect(page.locator('#fallback')).toBeVisible();
+        await expect(page.locator('#content')).toBeHidden();
+
+        await page.evaluate(() => window._pending[1].resolve());
+
+        await expect(page.locator('#fallback')).toHaveCount(0);
+        await expect(page.locator('#content')).toBeVisible();
+        expect(await page.evaluate(() => window._pending.map(({ child }) => child.loaded))).toEqual([false, true]);
+    });
+
+    test('unwraps loaded content while a fallback component is still loading', async ({ page }) => {
+        await defineComponent(page, 'x-delay', 'XDelay', '<div id="child">ready</div>');
+        await attachMethod(page, 'XDelay', 'initialize', function() {
+            this.deferLoad(new Promise((resolve) => {
+                window._resolveLoad = resolve;
+            }));
+        });
+        await defineComponent(page, 'x-fallback', 'XFallback', '<div id="fallback">loading</div>');
+        await attachMethod(page, 'XFallback', 'initialize', function() {
+            this.deferLoad(new Promise(() => {}));
+            window._fallback = this;
+        });
+
+        await page.evaluate(() => {
+            window.Component.bootstrap();
+            document.body.innerHTML = `
+                <x-suspense>
+                    <template slot="fallback">
+                        <x-fallback></x-fallback>
+                    </template>
+                    <x-delay></x-delay>
+                </x-suspense>
+            `;
+        });
+
+        await page.waitForFunction(() => window._resolveLoad && window._fallback?.initialized);
+        await expect(page.locator('#fallback')).toBeVisible();
+        await expect(page.locator('#child')).toBeHidden();
+
+        await page.evaluate(() => window._resolveLoad());
+
+        await expect(page.locator('#fallback')).toHaveCount(0);
+        await expect(page.locator('#child')).toBeVisible();
+        expect(await page.evaluate(() => window._fallback.loaded)).toBe(false);
     });
 
     test('skips fallback when there are no child components', async ({ page }) => {

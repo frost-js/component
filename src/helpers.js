@@ -29,6 +29,58 @@ export function findChildren(component, element, components = []) {
 };
 
 /**
+ * Waits for pending child components to load or be removed.
+ * @param {Component} component The root component.
+ * @param {Element} [element=component.rootElement] The element containing the children.
+ * @returns {Promise<void>} A promise that resolves when no pending children remain.
+ */
+export function waitForChildren(component, element = component.rootElement) {
+    let pendingChildren = findChildren(component, element)
+        .filter((child) => !child.loaded);
+
+    if (!pendingChildren.length) {
+        return Promise.resolve();
+    }
+
+    return new Promise((resolve) => {
+        const check = () => {
+            const children = findChildren(component, element);
+            pendingChildren = pendingChildren.filter((child) => {
+                if (child.loaded) {
+                    return false;
+                }
+
+                if (children.includes(child)) {
+                    return true;
+                }
+
+                child.removeEventListener('loaded', check);
+                return false;
+            });
+
+            if (pendingChildren.length) {
+                return;
+            }
+
+            observer.disconnect();
+            resolve();
+        };
+
+        const observer = new MutationObserver(check);
+        observer.observe(element, {
+            childList: true,
+            subtree: true,
+        });
+
+        for (const child of pendingChildren) {
+            child.addEventListener('loaded', check, { once: true });
+        }
+
+        check();
+    });
+};
+
+/**
  * Finds the components represented by a public DOM element.
  * @param {Element} element The public element to inspect.
  * @returns {Component[]} The components represented by the element, from inner to outer.

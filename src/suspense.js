@@ -1,5 +1,5 @@
 import Component from './component.js';
-import { findChildren } from './helpers.js';
+import { waitForChildren } from './helpers.js';
 
 /**
  * Provides fallback content while child components load.
@@ -32,13 +32,7 @@ export default class Suspense extends Component {
             template.replaceWith(template.content.cloneNode(true));
         }
 
-        const pending = findChildren(this, this.content)
-            .filter((child) => !child.loaded)
-            .map((child) => new Promise((resolve) => {
-                child.addEventListener('loaded', resolve, { once: true });
-            }));
-
-        Promise.all(pending).then(() => {
+        waitForChildren(this, this.content).then(() => {
             if (!this.rootElement.parentNode) {
                 return;
             }

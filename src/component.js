@@ -5,7 +5,7 @@ import { bind } from './bind.js';
 import { parseBlocks, processConditionals, processLoops } from './blocks.js';
 import { getEffectScope, runInEffectScope } from './effect-scope.js';
 import { parseElements } from './element.js';
-import { findChildren, findParent, isComponent } from './helpers.js';
+import { findChildren, findParent, isComponent, waitForChildren } from './helpers.js';
 import { getShadowAssets } from './shadow-assets.js';
 import { parseSlots, processSlots } from './slots.js';
 import { parseState } from './state.js';
@@ -465,61 +465,11 @@ export default class Component extends HTMLElement {
         const event = new Event('initialized');
         this.dispatchEvent(event);
 
-        this.#waitForChildren().then(() => this.#waitForLoadGates()).then(() => {
+        waitForChildren(this).then(() => this.#waitForLoadGates()).then(() => {
             this.#loaded = true;
 
             const event = new Event('loaded');
             this.dispatchEvent(event);
-        });
-    }
-
-    /**
-     * Waits for pending child components to load or be removed.
-     * @returns {Promise<void>} A promise that resolves when no pending children remain.
-     */
-    #waitForChildren() {
-        let pendingChildren = this.childComponents
-            .filter((component) => !component.loaded);
-
-        if (!pendingChildren.length) {
-            return Promise.resolve();
-        }
-
-        return new Promise((resolve) => {
-            const check = () => {
-                const children = this.childComponents;
-                pendingChildren = pendingChildren.filter((child) => {
-                    if (child.loaded) {
-                        return false;
-                    }
-
-                    if (children.includes(child)) {
-                        return true;
-                    }
-
-                    child.removeEventListener('loaded', check);
-                    return false;
-                });
-
-                if (pendingChildren.length) {
-                    return;
-                }
-
-                observer.disconnect();
-                resolve();
-            };
-
-            const observer = new MutationObserver(check);
-            observer.observe(this.renderRoot, {
-                childList: true,
-                subtree: true,
-            });
-
-            for (const child of pendingChildren) {
-                child.addEventListener('loaded', check, { once: true });
-            }
-
-            check();
         });
     }
 
