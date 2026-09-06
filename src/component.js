@@ -466,7 +466,7 @@ export default class Component extends HTMLElement {
         const event = new Event('initialized');
         this.dispatchEvent(event);
 
-        waitForChildren(this).then(() => this.#waitForLoadGates()).then(() => {
+        this.#waitForLoad().then(() => {
             this.#loaded = true;
 
             const event = new Event('loaded');
@@ -475,15 +475,13 @@ export default class Component extends HTMLElement {
     }
 
     /**
-     * Waits for deferred loading promises, including any registered while waiting.
-     * @returns {Promise<void>} A promise that resolves when all loading gates have settled.
+     * Waits for child components and deferred loading promises, including any added while waiting.
+     * @returns {Promise<void>} A promise that resolves when children and loading gates have settled.
      */
-    #waitForLoadGates() {
-        if (!this.#loadedGates.size) {
-            return Promise.resolve();
-        }
-
-        const promises = [...this.#loadedGates];
-        return Promise.allSettled(promises).then(() => this.#waitForLoadGates());
+    async #waitForLoad() {
+        do {
+            await waitForChildren(this);
+            await Promise.allSettled([...this.#loadedGates]);
+        } while (this.#loadedGates.size || this.childComponents.some((child) => !child.loaded));
     }
 }

@@ -25,6 +25,56 @@ test.describe('Shadow mode', () => {
         expect(result).toEqual({ children: 0, content: 'content', svgSlot: true });
     });
 
+    for (const shadowMode of ['open', 'closed']) {
+        for (const change of ['removed', 'removed from a wrapper', 'assigned to a missing slot']) {
+            test(`loads when a pending slotted child is ${change} in ${shadowMode} mode`, async ({ page }) => {
+                await page.evaluate(({ shadowMode, change }) => {
+                    class XChild extends window.Component {
+                        static shadowMode = shadowMode;
+
+                        initialize() {
+                            this.deferLoad(new Promise((resolve) => {
+                                window._resolveChild = resolve;
+                            }));
+                        }
+                    }
+
+                    class XParent extends window.Component {
+                        static shadowMode = shadowMode;
+                    }
+
+                    customElements.define('x-child', XChild);
+                    customElements.define('x-parent', XParent);
+                    document.body.innerHTML = change === 'removed from a wrapper' ?
+                        '<x-parent><section><x-child></x-child></section></x-parent>' :
+                        '<x-parent><x-child></x-child></x-parent>';
+                    window._parent = document.querySelector('x-parent');
+                    window._child = document.querySelector('x-child');
+                    window._loadedCount = 0;
+                    window._parent.addEventListener('loaded', () => window._loadedCount++);
+                }, { shadowMode, change });
+
+                await page.waitForFunction(() => window._child.initialized);
+                expect(await page.evaluate(() => window._parent.loaded)).toBe(false);
+
+                await page.evaluate((change) => {
+                    if (change === 'assigned to a missing slot') {
+                        window._child.slot = 'missing';
+                    } else {
+                        window._child.remove();
+                    }
+                }, change);
+                await page.waitForFunction(() => window._parent.loaded);
+                expect(await page.evaluate(() => window._parent.childComponents.length)).toBe(0);
+                expect(await page.evaluate(() => window._child.loaded)).toBe(false);
+
+                await page.evaluate(() => window._resolveChild());
+                await page.waitForFunction(() => window._child.loaded);
+                expect(await page.evaluate(() => window._loadedCount)).toBe(1);
+            });
+        }
+    }
+
     test('projects slotted content in shadow mode', async ({ page }) => {
         await page.route('**/components/*', async (route) => {
             const url = route.request().url();

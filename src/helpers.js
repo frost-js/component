@@ -70,6 +70,7 @@ export function waitForChildren(component, element = component.rootElement) {
             }
 
             observer.disconnect();
+            element.removeEventListener('slotchange', check);
             resolve();
         };
 
@@ -78,6 +79,15 @@ export function waitForChildren(component, element = component.rootElement) {
             childList: true,
             subtree: true,
         });
+
+        if (component.renderRoot instanceof ShadowRoot) {
+            observer.observe(component, {
+                childList: true,
+                subtree: true,
+            });
+        }
+
+        element.addEventListener('slotchange', check);
 
         for (const child of pendingChildren) {
             child.addEventListener('loaded', check, { once: true });

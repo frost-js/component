@@ -367,6 +367,61 @@ test.describe('Component lifecycle', () => {
         });
     }
 
+    for (const shadowMode of [null, 'open', 'closed']) {
+        test(`rechecks children and load gates while loading in ${shadowMode || 'light'} mode`, async ({ page }) => {
+            await page.evaluate((shadowMode) => {
+                class XChild extends window.Component {
+                    initialize() {
+                        this.deferLoad(new Promise((resolve) => {
+                            window._resolveChild = resolve;
+                        }));
+                    }
+                }
+
+                class XParent extends window.Component {
+                    static shadowMode = shadowMode;
+
+                    initialize() {
+                        this.deferLoad(new Promise((resolve) => {
+                            window._resolveParent = resolve;
+                        }));
+                    }
+                }
+
+                customElements.define('x-child', XChild);
+                customElements.define('x-parent', XParent);
+                window._parent = document.createElement('x-parent');
+                document.body.appendChild(window._parent);
+            }, shadowMode);
+
+            await page.waitForFunction(() => window._parent.initialized);
+            await flushTasks(page);
+            await page.evaluate(() => {
+                window._child = document.createElement('x-child');
+                window._parent.rootElement.appendChild(window._child);
+            });
+            await page.waitForFunction(() => window._child.initialized);
+            await page.evaluate(() => window._resolveParent());
+            await flushTasks(page);
+
+            expect(await page.evaluate(() => window._parent.loaded)).toBe(false);
+            expect(await page.evaluate(() => window._child.loaded)).toBe(false);
+
+            await page.evaluate(() => {
+                window._parent.deferLoad(new Promise((resolve) => {
+                    window._resolveParent = resolve;
+                }));
+                window._resolveChild();
+            });
+            await page.waitForFunction(() => window._child.loaded);
+            await flushTasks(page);
+            expect(await page.evaluate(() => window._parent.loaded)).toBe(false);
+
+            await page.evaluate(() => window._resolveParent());
+            await page.waitForFunction(() => window._parent.loaded);
+        });
+    }
+
     test('throws when a component is reattached after initialization', async ({ page }) => {
         await defineComponent(page, 'x-component', 'XComponent', '<div></div>');
 

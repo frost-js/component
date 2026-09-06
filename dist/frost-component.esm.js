@@ -109,6 +109,7 @@ function waitForChildren(component, element = component.rootElement) {
 			}
 			if (pendingChildren.length) return;
 			observer.disconnect();
+			element.removeEventListener("slotchange", check);
 			resolve();
 		};
 		const observer = new MutationObserver(check);
@@ -116,6 +117,11 @@ function waitForChildren(component, element = component.rootElement) {
 			childList: true,
 			subtree: true
 		});
+		if (component.renderRoot instanceof ShadowRoot) observer.observe(component, {
+			childList: true,
+			subtree: true
+		});
+		element.addEventListener("slotchange", check);
 		for (const child of pendingChildren) child.addEventListener("loaded", check, { once: true });
 		check();
 	});
@@ -1354,20 +1360,21 @@ var Component = class extends HTMLElement {
 		processLoops(this, loops);
 		const event = new Event("initialized");
 		this.dispatchEvent(event);
-		waitForChildren(this).then(() => this.#waitForLoadGates()).then(() => {
+		this.#waitForLoad().then(() => {
 			this.#loaded = true;
 			const event = new Event("loaded");
 			this.dispatchEvent(event);
 		});
 	}
 	/**
-	* Waits for deferred loading promises, including any registered while waiting.
-	* @returns {Promise<void>} A promise that resolves when all loading gates have settled.
+	* Waits for child components and deferred loading promises, including any added while waiting.
+	* @returns {Promise<void>} A promise that resolves when children and loading gates have settled.
 	*/
-	#waitForLoadGates() {
-		if (!this.#loadedGates.size) return Promise.resolve();
-		const promises = [...this.#loadedGates];
-		return Promise.allSettled(promises).then(() => this.#waitForLoadGates());
+	async #waitForLoad() {
+		do {
+			await waitForChildren(this);
+			await Promise.allSettled([...this.#loadedGates]);
+		} while (this.#loadedGates.size || this.childComponents.some((child) => !child.loaded));
 	}
 };
 
