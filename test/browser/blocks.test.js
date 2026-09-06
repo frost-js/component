@@ -44,6 +44,84 @@ test.describe('Component blocks', () => {
         await expect(input).toHaveValue('Draft text');
     });
 
+    test('toggles the current conditional root after a nested component is defined late', async ({ page }) => {
+        const errors = [];
+        page.on('pageerror', (error) => errors.push(error.message));
+        await defineComponent(page, 'x-wrapper', 'XWrapper', '<x-child count="1"></x-child>');
+        await defineComponent(page, 'x-parent', 'XParent', '<div><x-wrapper x:if="{ this.state.count > 0 }"></x-wrapper><p x:else>Empty</p></div>');
+        await page.evaluate(() => window.Component.bootstrap());
+        await page.setContent('<x-parent count="1"></x-parent>');
+        await page.waitForFunction(() => document.querySelector('x-child')?.component?.initialized);
+
+        await defineComponent(page, 'x-child', 'XChild', '<article><input><span>{count}</span></article>');
+        await waitForComponent(page, 'x-parent');
+        await page.evaluate(() => {
+            window._branch = document.querySelector('article');
+        });
+
+        const input = page.locator('input');
+        await input.fill('Draft text');
+        await input.evaluate((element) => element.setSelectionRange(1, 4));
+        await updateState(page, 'x-parent', { count: 2 });
+        await expect(input).toBeFocused();
+        expect(await input.evaluate((element) => [element.selectionStart, element.selectionEnd])).toEqual([1, 4]);
+
+        for (const count of [3, 4]) {
+            await updateState(page, 'x-parent', { count: 0 });
+            await expect(page.locator('article')).toHaveCount(0);
+            await expect(page.locator('p')).toHaveText('Empty');
+            await flushTasks(page);
+            await page.evaluate((count) => window._branch.component.state.count = count, count);
+
+            await updateState(page, 'x-parent', { count });
+            await expect(page.locator('article span')).toHaveText(`${count}`);
+            await expect(input).toHaveValue('Draft text');
+            await expect(page.locator('p')).toHaveCount(0);
+            expect(await page.locator('article').evaluate((element) => element === window._branch)).toBe(true);
+        }
+
+        await expect(page.locator('x-child')).toHaveCount(0);
+        expect(errors).toEqual([]);
+    });
+
+    test('hides a late-defined conditional root during its first connection', async ({ page }) => {
+        const errors = [];
+        page.on('pageerror', (error) => errors.push(error.message));
+        await defineComponent(page, 'x-wrapper', 'XWrapper', '<x-child></x-child>');
+        await defineComponent(page, 'x-parent', 'XParent', '<div><x-wrapper x:if="show"></x-wrapper></div>');
+        await page.setContent('<x-parent show="true"></x-parent>');
+        await page.waitForFunction(() => document.querySelector('x-child')?.component?.initialized);
+        await page.evaluate(() => {
+            window._parent = document.querySelector('[x\\:component="x-parent"]').component;
+            window._hiddenOnce = false;
+
+            class XChild extends window.Component {
+                static get template() {
+                    return '<article>Branch</article>';
+                }
+
+                onConnected() {
+                    if (!window._hiddenOnce) {
+                        window._hiddenOnce = true;
+                        window._parent.state.show = false;
+                    }
+                }
+            }
+
+            customElements.define('x-child', XChild);
+        });
+
+        await waitForComponent(page, 'x-parent');
+        await expect(page.locator('article')).toHaveCount(0);
+        await expect(page.locator('x-child')).toHaveCount(0);
+
+        await updateState(page, 'x-parent', { show: true });
+        await expect(page.locator('article')).toHaveText('Branch');
+        await updateState(page, 'x-parent', { show: false });
+        await expect(page.locator('article')).toHaveCount(0);
+        expect(errors).toEqual([]);
+    });
+
     test('renders x:else branch when condition becomes false', async ({ page }) => {
         await defineComponent(page, 'x-component', 'XComponent', '<div><span id="a" x:if="show">A</span><span id="b" x:else>B</span></div>');
         await page.setContent('<x-component show="true"></x-component>');

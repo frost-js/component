@@ -1277,18 +1277,16 @@
 	function processConditionals(component, conditionals) {
 		for (const cases of conditionals) {
 			const conditions = [];
-			for (const { condition, element, end } of cases) {
-				const data = {
-					attached: false,
-					callback: evaluator(component, condition, ["conditional"]),
-					element,
-					end
-				};
-				conditions.push(data);
-				if (isComponent(element.localName)) element.addEventListener("initialized", () => {
-					data.element = element.element;
-				}, { once: true });
-			}
+			for (const { condition, element, end } of cases) conditions.push({
+				attached: false,
+				callback: evaluator(component, condition, ["conditional"]),
+				get element() {
+					let node = element;
+					while (isComponent(node.localName) && node.initialized && node.renderRoot === node.rootElement) node = node.rootElement;
+					return node;
+				},
+				end
+			});
 			const getActiveCondition = () => conditions.find((condition) => condition.callback());
 			component.effect(() => {
 				const activeCondition = getActiveCondition();
