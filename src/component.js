@@ -232,132 +232,7 @@ export default class Component extends HTMLElement {
                 }) :
                 Promise.resolve();
 
-            initializedPromise.then(() => {
-                if (!this.isConnected || !this.parentNode) {
-                    return;
-                }
-
-                this.addEventListener('mounted', () => {
-                    this.#mounted = true;
-                    this.#visible = true;
-
-                    for (const { effect } of this.#pendingEffects) {
-                        effect.sync();
-                    }
-
-                    this.#pendingEffects.clear();
-                });
-
-                this.addEventListener('dismounted', () => {
-                    this.#mounted = false;
-                });
-
-                this.addEventListener('visible', () => {
-                    this.#visible = true;
-
-                    for (const { effect } of this.#pendingEffects) {
-                        effect.sync();
-                    }
-
-                    this.#pendingEffects.clear();
-                });
-
-                this.addEventListener('invisible', () => {
-                    this.#visible = false;
-                });
-
-                // extract outer conditionals/loops
-                const [conditionals, loops] = parseBlocks(this.#rootElement);
-
-                parseState(this);
-
-                if (this.#shadowRoot) {
-                    this.#shadowRoot.appendChild(this.#rootElement);
-                } else {
-                    processSlots(this);
-
-                    const slot = this.getAttribute('slot');
-                    if (slot !== null) {
-                        this.#rootElement.setAttribute('slot', slot);
-                    }
-
-                    // replace element
-                    this.parentNode.insertBefore(this.#rootElement, this);
-                    this.remove();
-                }
-
-                this.#initialized = true;
-
-                // mark component as mounted/visible, so effects will run the first time
-                this.#mounted = true;
-                this.#visible = true;
-
-                this.initialize();
-
-                bind(this, this.#rootElement);
-                processConditionals(this, conditionals);
-                processLoops(this, loops);
-
-                const event = new Event('initialized');
-                this.dispatchEvent(event);
-
-                let pendingChildren = this.childComponents
-                    .filter((component) => !component.loaded);
-                const childrenPromise = !pendingChildren.length ?
-                    Promise.resolve() :
-                    new Promise((resolve) => {
-                        const check = () => {
-                            const children = this.childComponents;
-                            pendingChildren = pendingChildren.filter((child) => {
-                                if (child.loaded) {
-                                    return false;
-                                }
-
-                                if (children.includes(child)) {
-                                    return true;
-                                }
-
-                                child.removeEventListener('loaded', check);
-                                return false;
-                            });
-
-                            if (pendingChildren.length) {
-                                return;
-                            }
-
-                            observer.disconnect();
-                            resolve();
-                        };
-
-                        const observer = new MutationObserver(check);
-                        observer.observe(this.renderRoot, {
-                            childList: true,
-                            subtree: true,
-                        });
-
-                        for (const child of pendingChildren) {
-                            child.addEventListener('loaded', check, { once: true });
-                        }
-
-                        check();
-                    });
-
-                const awaitGates = () => {
-                    if (!this.#loadedGates.size) {
-                        return Promise.resolve();
-                    }
-
-                    const promises = [...this.#loadedGates];
-                    return Promise.allSettled(promises).then(awaitGates);
-                };
-
-                childrenPromise.then(awaitGates).then(() => {
-                    this.#loaded = true;
-
-                    const event = new Event('loaded');
-                    this.dispatchEvent(event);
-                });
-            });
+            initializedPromise.then(() => this.#initializeComponent());
         }, 0);
     }
 
@@ -513,5 +388,149 @@ export default class Component extends HTMLElement {
         }
 
         return fragment.firstElementChild;
+    }
+
+    /**
+     * Runs and clears effects deferred while the component was dismounted or invisible.
+     */
+    #flushPendingEffects() {
+        for (const { effect } of this.#pendingEffects) {
+            effect.sync();
+        }
+
+        this.#pendingEffects.clear();
+    }
+
+    /**
+     * Initializes the component's DOM, bindings, and lifecycle after its parent is ready.
+     */
+    #initializeComponent() {
+        if (!this.isConnected || !this.parentNode) {
+            return;
+        }
+
+        this.addEventListener('mounted', () => {
+            this.#mounted = true;
+            this.#visible = true;
+            this.#flushPendingEffects();
+        });
+
+        this.addEventListener('dismounted', () => {
+            this.#mounted = false;
+        });
+
+        this.addEventListener('visible', () => {
+            this.#visible = true;
+            this.#flushPendingEffects();
+        });
+
+        this.addEventListener('invisible', () => {
+            this.#visible = false;
+        });
+
+        // extract outer conditionals/loops
+        const [conditionals, loops] = parseBlocks(this.#rootElement);
+
+        parseState(this);
+
+        if (this.#shadowRoot) {
+            this.#shadowRoot.appendChild(this.#rootElement);
+        } else {
+            processSlots(this);
+
+            const slot = this.getAttribute('slot');
+            if (slot !== null) {
+                this.#rootElement.setAttribute('slot', slot);
+            }
+
+            // replace element
+            this.parentNode.insertBefore(this.#rootElement, this);
+            this.remove();
+        }
+
+        this.#initialized = true;
+
+        // mark component as mounted/visible, so effects will run the first time
+        this.#mounted = true;
+        this.#visible = true;
+
+        this.initialize();
+
+        bind(this, this.#rootElement);
+        processConditionals(this, conditionals);
+        processLoops(this, loops);
+
+        const event = new Event('initialized');
+        this.dispatchEvent(event);
+
+        this.#waitForChildren().then(() => this.#waitForLoadGates()).then(() => {
+            this.#loaded = true;
+
+            const event = new Event('loaded');
+            this.dispatchEvent(event);
+        });
+    }
+
+    /**
+     * Waits for pending child components to load or be removed.
+     * @returns {Promise<void>} A promise that resolves when no pending children remain.
+     */
+    #waitForChildren() {
+        let pendingChildren = this.childComponents
+            .filter((component) => !component.loaded);
+
+        if (!pendingChildren.length) {
+            return Promise.resolve();
+        }
+
+        return new Promise((resolve) => {
+            const check = () => {
+                const children = this.childComponents;
+                pendingChildren = pendingChildren.filter((child) => {
+                    if (child.loaded) {
+                        return false;
+                    }
+
+                    if (children.includes(child)) {
+                        return true;
+                    }
+
+                    child.removeEventListener('loaded', check);
+                    return false;
+                });
+
+                if (pendingChildren.length) {
+                    return;
+                }
+
+                observer.disconnect();
+                resolve();
+            };
+
+            const observer = new MutationObserver(check);
+            observer.observe(this.renderRoot, {
+                childList: true,
+                subtree: true,
+            });
+
+            for (const child of pendingChildren) {
+                child.addEventListener('loaded', check, { once: true });
+            }
+
+            check();
+        });
+    }
+
+    /**
+     * Waits for deferred loading promises, including any registered while waiting.
+     * @returns {Promise<void>} A promise that resolves when all loading gates have settled.
+     */
+    #waitForLoadGates() {
+        if (!this.#loadedGates.size) {
+            return Promise.resolve();
+        }
+
+        const promises = [...this.#loadedGates];
+        return Promise.allSettled(promises).then(() => this.#waitForLoadGates());
     }
 }
