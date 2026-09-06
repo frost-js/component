@@ -1,5 +1,5 @@
 import { expect, test } from '#test';
-import { defineComponent, initializePage } from '../support/utils.js';
+import { defineComponent, flushTasks, initializePage, updateState, waitForComponent } from '../support/utils.js';
 
 test.describe('Component input bindings', () => {
     test.beforeEach(async ({ page }) => {
@@ -207,6 +207,77 @@ test.describe('Component input bindings', () => {
         });
 
         await expect(single).toHaveValue('b');
+    });
+
+    for (const multiple of [false, true]) {
+        test(`restores ${multiple ? 'multiple' : 'single'} select values when conditional options appear`, async ({ page }) => {
+            await defineComponent(page, 'x-component', 'XComponent', `
+                <div>
+                    <select ${multiple ? 'multiple' : ''} x:bind="choice">
+                        <option x:if="show" value="a">A</option>
+                        <optgroup label="More">
+                            <option x:if="show" value="b">B</option>
+                            <option x:if="show" value="c">C</option>
+                        </optgroup>
+                    </select>
+                </div>
+            `);
+            await page.setContent(`<x-component show="false" choice="${multiple ? '[\'b\', \'c\']' : 'b'}"></x-component>`);
+            await waitForComponent(page, 'x-component');
+
+            const select = page.locator('select');
+            await expect(select.locator('option')).toHaveCount(0);
+            await updateState(page, 'x-component', { show: true });
+            await expect.poll(() => select.evaluate((element) => [...element.selectedOptions].map((option) => option.value)))
+                .toEqual(multiple ? ['b', 'c'] : ['b']);
+
+            await select.selectOption('a');
+            expect(await page.evaluate(() => document.querySelector('[x\\:component="x-component"]').component.state.choice))
+                .toEqual(multiple ? ['a'] : 'a');
+
+            await updateState(page, 'x-component', { show: false });
+            await expect(select.locator('option')).toHaveCount(0);
+            await updateState(page, 'x-component', { show: true });
+            await expect.poll(() => select.evaluate((element) => [...element.selectedOptions].map((option) => option.value)))
+                .toEqual(['a']);
+
+            await updateState(page, 'x-component', { show: false });
+            await expect(select.locator('option')).toHaveCount(0);
+            await updateState(page, 'x-component', { choice: multiple ? ['b', 'c'] : 'b' });
+            await updateState(page, 'x-component', { show: true });
+            await expect.poll(() => select.evaluate((element) => [...element.selectedOptions].map((option) => option.value)))
+                .toEqual(multiple ? ['b', 'c'] : ['b']);
+        });
+    }
+
+    test('stops observing select options when their loop row is removed', async ({ page }) => {
+        await defineComponent(page, 'x-row', 'XRow', '<div><slot></slot></div>');
+        await defineComponent(page, 'x-parent', 'XParent', `
+            <div>
+                <x-row x:each="items">
+                    <select x:bind="choice">
+                        <option value="a">A</option>
+                        <option value="b">B</option>
+                    </select>
+                </x-row>
+            </div>
+        `);
+        await page.setContent('<x-parent items="[{ id: 1 }]" choice="b"></x-parent>');
+        await waitForComponent(page, 'x-parent');
+        await expect(page.locator('select')).toHaveValue('b');
+        await page.evaluate(() => {
+            window._select = document.querySelector('select');
+        });
+
+        await updateState(page, 'x-parent', { items: [] });
+        await expect(page.locator('select')).toHaveCount(0);
+        await page.evaluate(() => {
+            window._select.value = 'a';
+            window._select.appendChild(new Option('C', 'c'));
+        });
+        await flushTasks(page);
+
+        expect(await page.evaluate(() => window._select.value)).toBe('a');
     });
 
     test('binds radio inputs with x:bind', async ({ page }) => {

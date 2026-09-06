@@ -555,16 +555,7 @@ function bindEvent(component, element, name, value) {
 function bindInput(component, element, name, value) {
 	element.removeAttribute(name);
 	if (!value) return;
-	if (element.matches("select[multiple]")) {
-		component.state(value, []);
-		component.effect(() => {
-			const values = component.state[value];
-			for (const option of element.options) option.selected = Array.isArray(values) && values.includes(option.value);
-		});
-		element.addEventListener("change", () => {
-			component.state[value] = [...element.selectedOptions].map((option) => option.value);
-		});
-	} else if (element.matches("input[type=\"checkbox\"]")) {
+	if (element.matches("input[type=\"checkbox\"]")) {
 		component.state(value, false);
 		component.effect(() => {
 			if (Array.isArray(component.state[value])) element.checked = component.state[value].includes(element.value);
@@ -586,16 +577,30 @@ function bindInput(component, element, name, value) {
 			else if (component.state[value] == element.value) component.state[value] = void 0;
 		});
 	} else if (element.matches("input, select, textarea")) {
-		component.effect(() => {
-			if (isEmpty(component.state[value])) element.value = "";
-			else element.value = component.state[value];
-		});
-		element.addEventListener("change", () => {
+		const multiple = element.matches("select[multiple]");
+		if (multiple) component.state(value, []);
+		const update = multiple ? () => {
+			const values = component.state[value];
+			for (const option of element.options) option.selected = Array.isArray(values) && values.includes(option.value);
+		} : () => {
+			element.value = isEmpty(component.state[value]) ? "" : component.state[value];
+		};
+		component.effect(update);
+		if (element.localName === "select") {
+			const observer = new MutationObserver(update);
+			observer.observe(element, {
+				childList: true,
+				subtree: true
+			});
+			getEffectScope(component)?.cleanups.add(() => observer.disconnect());
+		}
+		const change = multiple ? () => {
+			component.state[value] = [...element.selectedOptions].map((option) => option.value);
+		} : () => {
 			component.state[value] = element.value;
-		});
-		element.addEventListener("input", () => {
-			component.state[value] = element.value;
-		});
+		};
+		element.addEventListener("change", change);
+		if (!multiple) element.addEventListener("input", change);
 	}
 }
 /**
