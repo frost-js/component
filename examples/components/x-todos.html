@@ -51,7 +51,7 @@
     <x-todo-form @save="(e) => {
         const form = e.currentTarget;
 
-        if (form.state.text.trim() === '') {
+        if (!form.state.text?.trim()) {
             return;
         }
 
