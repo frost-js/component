@@ -1711,7 +1711,7 @@
 		* @returns {SlotDefinition | undefined} The slot definition, or `undefined` if the slot is missing.
 		*/
 		getSlot(name = "") {
-			return this.#slots[name];
+			return Object.hasOwn(this.#slots, name) ? this.#slots[name] : void 0;
 		}
 		/**
 		* Lifecycle hook that runs after state parsing and DOM placement, before bindings and blocks are activated.

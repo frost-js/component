@@ -322,7 +322,7 @@ export default class Component extends HTMLElement {
      * @returns {SlotDefinition | undefined} The slot definition, or `undefined` if the slot is missing.
      */
     getSlot(name = '') {
-        return this.#slots[name];
+        return Object.hasOwn(this.#slots, name) ? this.#slots[name] : undefined;
     }
 
     /**

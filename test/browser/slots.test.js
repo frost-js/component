@@ -15,6 +15,28 @@ test.describe('Component slots', () => {
         await expect(root.locator('h1')).toHaveAttribute('slot', 'title');
     });
 
+    for (const name of ['toString', 'constructor', '__proto__']) {
+        test(`ignores unknown slot "${name}" and finishes loading`, async ({ page }) => {
+            await defineComponent(page, 'x-component', 'XComponent', '<div><slot>Fallback</slot></div>');
+            await page.setContent(`<x-component><h1 slot="${name}">Title</h1></x-component>`);
+            await waitForComponent(page, 'x-component');
+
+            const root = page.locator('[x\\:component="x-component"]');
+            await expect(root).toHaveText('Fallback');
+            expect(await root.evaluate((element, name) => element.component.getSlot(name), name)).toBeUndefined();
+        });
+
+        test(`assigns explicitly defined slot "${name}"`, async ({ page }) => {
+            await defineComponent(page, 'x-component', 'XComponent', `<div><slot name="${name}">Fallback</slot></div>`);
+            await page.setContent(`<x-component><h1 slot="${name}">Title</h1></x-component>`);
+            await waitForComponent(page, 'x-component');
+
+            const root = page.locator('[x\\:component="x-component"]');
+            await expect(root).toHaveText('Title');
+            expect(await root.evaluate((element, name) => element.component.getSlot(name).assigned().length, name)).toBe(1);
+        });
+    }
+
     test('exposes slot definitions without overriding the native slot property', async ({ page }) => {
         await defineComponent(page, 'x-component', 'XComponent', '<div><slot name="title"></slot></div>');
         await page.setContent('<x-component slot="outer"><h1 slot="title">Title</h1></x-component>');
