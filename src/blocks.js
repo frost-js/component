@@ -3,7 +3,7 @@
 import { bind } from './bind.js';
 import { collectEffects } from './effect-scope.js';
 import { evaluator } from './evaluator.js';
-import { isComponent, resolveElement, skipSubtree } from './helpers.js';
+import { isComponent, skipSubtree } from './helpers.js';
 import { setInitialState } from './state.js';
 
 /**
@@ -215,6 +215,8 @@ export function processLoops(component, loops) {
     for (const { iterable, identifier, element, start, end } of loops) {
         let loopRecords = new Map();
         const callback = evaluator(component, iterable, ['loop'], []);
+        const range = document.createRange();
+
         component.effect(() => {
             const items = callback();
 
@@ -238,16 +240,12 @@ export function processLoops(component, loops) {
                     throw new Error(`Duplicate identifier "${id}" in "${iterable}"`);
                 }
 
-                let loopComponent;
-                let dispose;
-                if (previousRecords.has(id)) {
-                    const previous = previousRecords.get(id);
+                let record = previousRecords.get(id);
+                if (record) {
+                    const loopComponent = record.component;
                     const state = { ...item };
 
-                    loopComponent = previous.component;
-                    dispose = previous.dispose;
-
-                    for (const key of previous.stateKeys) {
+                    for (const key of record.stateKeys) {
                         if (!Object.hasOwn(item, key)) {
                             state[key] = undefined;
                         }
@@ -259,40 +257,50 @@ export function processLoops(component, loops) {
                         setInitialState(loopComponent, state);
                     }
                 } else {
-                    loopComponent = element.cloneNode(true);
+                    const loopComponent = element.cloneNode(true);
                     setInitialState(loopComponent, item);
 
                     const [nestedConditionals, nestedLoops] = parseBlocks(loopComponent);
 
-                    dispose = collectEffects(component, () => {
+                    const dispose = collectEffects(component, () => {
                         bind(component, loopComponent);
                         processConditionals(component, nestedConditionals);
                         processLoops(component, nestedLoops);
                     });
+
+                    // Keep row boundaries when a component replaces or unwraps its root.
+                    record = {
+                        component: loopComponent,
+                        dispose,
+                        start: document.createComment('item'),
+                        end: document.createComment('/item'),
+                    };
+
+                    const fragment = document.createDocumentFragment();
+                    fragment.append(record.start, loopComponent, record.end);
                 }
 
-                const node = resolveElement(loopComponent);
-
-                if (previousNode.nextSibling !== node) {
-                    end.parentNode.insertBefore(node, previousNode.nextSibling);
+                if (previousNode.nextSibling !== record.start) {
+                    range.setStartBefore(record.start);
+                    range.setEndAfter(record.end);
+                    end.parentNode.insertBefore(range.extractContents(), previousNode.nextSibling);
                 }
 
-                previousNode = node;
+                previousNode = record.end;
 
-                loopRecords.set(id, {
-                    component: loopComponent,
-                    dispose,
-                    stateKeys: Object.keys(item),
-                });
+                record.stateKeys = Object.keys(item);
+                loopRecords.set(id, record);
             }
 
-            for (const [id, { component: loopComponent, dispose }] of previousRecords) {
+            for (const [id, record] of previousRecords) {
                 if (loopRecords.has(id)) {
                     continue;
                 }
 
-                dispose();
-                resolveElement(loopComponent).remove();
+                record.dispose();
+                range.setStartBefore(record.start);
+                range.setEndAfter(record.end);
+                range.deleteContents();
             }
         });
     }

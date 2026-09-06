@@ -138,6 +138,59 @@ test.describe('Suspense component', () => {
         expect(errors).toEqual([]);
     });
 
+    test('reuses, reorders, and removes complete unwrapped loop rows', async ({ page }) => {
+        const errors = [];
+        page.on('pageerror', (error) => errors.push(error.message));
+        await defineComponent(page, 'x-parent', 'XParent', `
+            <div id="parent">
+                <x-suspense x:each="items">
+                    <template slot="fallback"><span class="fallback">loading</span></template>
+                    Before
+                    <input>
+                    <span class="content">ready</span>
+                    After
+                </x-suspense>
+            </div>
+        `);
+        await page.evaluate(() => window.Component.bootstrap());
+        await page.setContent('<x-parent items="[{ id: 1 }, { id: 2 }]"></x-parent>');
+        await waitForComponent(page, 'x-parent');
+        await expect(page.locator('#parent > .content')).toHaveCount(2);
+        await page.evaluate(() => {
+            window._rows = [...document.querySelectorAll('.content')];
+        });
+
+        const inputs = page.locator('input');
+        await inputs.nth(0).fill('First');
+        await inputs.nth(1).fill('Second');
+        await inputs.nth(1).evaluate((element) => element.setSelectionRange(1, 4));
+        await updateState(page, 'x-parent', { items: [{ id: 1 }, { id: 2 }] });
+        await expect(inputs.nth(1)).toBeFocused();
+        expect(await inputs.nth(1).evaluate((element) => [element.selectionStart, element.selectionEnd])).toEqual([1, 4]);
+        await expect(page.locator('.fallback')).toHaveCount(0);
+
+        await updateState(page, 'x-parent', { items: [{ id: 2 }, { id: 1 }] });
+        await expect(inputs.nth(0)).toHaveValue('Second');
+        await expect(inputs.nth(1)).toHaveValue('First');
+        expect(await page.locator('.content').evaluateAll((elements) => elements.map((element) => window._rows.indexOf(element))))
+            .toEqual([1, 0]);
+
+        await updateState(page, 'x-parent', { items: [{ id: 1 }] });
+        await expect(page.locator('#parent')).toHaveText('Before ready After');
+        await expect(inputs).toHaveCount(1);
+        await expect(inputs).toHaveValue('First');
+
+        await updateState(page, 'x-parent', { items: [] });
+        await expect(page.locator('#parent')).toBeEmpty();
+        await updateState(page, 'x-parent', { items: [{ id: 1 }] });
+        await expect(page.locator('#parent > .content')).toHaveCount(1);
+        await expect(page.locator('#parent')).toHaveText('Before ready After');
+        await expect(inputs).toHaveCount(1);
+        await expect(inputs).toHaveValue('');
+        await expect(page.locator('.fallback')).toHaveCount(0);
+        expect(errors).toEqual([]);
+    });
+
     test('waits for children added while showing the fallback', async ({ page }) => {
         await defineComponent(page, 'x-delay', 'XDelay', '<div class="child">ready</div>');
         await attachMethod(page, 'XDelay', 'initialize', function() {

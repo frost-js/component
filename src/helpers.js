@@ -10,19 +10,6 @@ export function isComponent(tagName) {
 };
 
 /**
- * Gets the current DOM element after component initialization.
- * @param {Element} element The original element or component host.
- * @returns {Element} The current element, stopping at pending or shadow components.
- */
-export function resolveElement(element) {
-    while (isComponent(element.localName) && element.initialized && element.renderRoot === element.rootElement) {
-        element = element.rootElement;
-    }
-
-    return element;
-};
-
-/**
  * Finds the components represented by a public DOM element.
  * @param {Element} element The public element to inspect.
  * @returns {Component[]} The components represented by the element, from inner to outer.

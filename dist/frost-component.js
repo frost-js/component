@@ -592,15 +592,6 @@
 		return tagName.startsWith("x-");
 	}
 	/**
-	* Gets the current DOM element after component initialization.
-	* @param {Element} element The original element or component host.
-	* @returns {Element} The current element, stopping at pending or shadow components.
-	*/
-	function resolveElement(element) {
-		while (isComponent(element.localName) && element.initialized && element.renderRoot === element.rootElement) element = element.rootElement;
-		return element;
-	}
-	/**
 	* Finds the components represented by a public DOM element.
 	* @param {Element} element The public element to inspect.
 	* @returns {Component[]} The components represented by the element, from inner to outer.
@@ -1035,6 +1026,8 @@
 			if (element.localName === "select") {
 				const observer = new MutationObserver(update);
 				observer.observe(element, {
+					attributeFilter: ["value"],
+					characterData: true,
 					childList: true,
 					subtree: true
 				});
@@ -1337,6 +1330,7 @@
 		for (const { iterable, identifier, element, start, end } of loops) {
 			let loopRecords = /* @__PURE__ */ new Map();
 			const callback = evaluator(component, iterable, ["loop"], []);
+			const range = document.createRange();
 			component.effect(() => {
 				const items = callback();
 				if (!Array.isArray(items)) throw new Error(`Iterable "${iterable}" must be an array`);
@@ -1347,39 +1341,44 @@
 					if (!(identifier in item)) throw new Error(`Item in "${iterable}" must have a "${identifier}" property`);
 					const id = item[identifier];
 					if (loopRecords.has(id)) throw new Error(`Duplicate identifier "${id}" in "${iterable}"`);
-					let loopComponent;
-					let dispose;
-					if (previousRecords.has(id)) {
-						const previous = previousRecords.get(id);
+					let record = previousRecords.get(id);
+					if (record) {
+						const loopComponent = record.component;
 						const state = { ...item };
-						loopComponent = previous.component;
-						dispose = previous.dispose;
-						for (const key of previous.stateKeys) if (!Object.hasOwn(item, key)) state[key] = void 0;
+						for (const key of record.stateKeys) if (!Object.hasOwn(item, key)) state[key] = void 0;
 						if (loopComponent.initialized) loopComponent.state.set(state);
 						else setInitialState(loopComponent, state);
 					} else {
-						loopComponent = element.cloneNode(true);
+						const loopComponent = element.cloneNode(true);
 						setInitialState(loopComponent, item);
 						const [nestedConditionals, nestedLoops] = parseBlocks(loopComponent);
-						dispose = collectEffects(component, () => {
-							bind(component, loopComponent);
-							processConditionals(component, nestedConditionals);
-							processLoops(component, nestedLoops);
-						});
+						record = {
+							component: loopComponent,
+							dispose: collectEffects(component, () => {
+								bind(component, loopComponent);
+								processConditionals(component, nestedConditionals);
+								processLoops(component, nestedLoops);
+							}),
+							start: document.createComment("item"),
+							end: document.createComment("/item")
+						};
+						document.createDocumentFragment().append(record.start, loopComponent, record.end);
 					}
-					const node = resolveElement(loopComponent);
-					if (previousNode.nextSibling !== node) end.parentNode.insertBefore(node, previousNode.nextSibling);
-					previousNode = node;
-					loopRecords.set(id, {
-						component: loopComponent,
-						dispose,
-						stateKeys: Object.keys(item)
-					});
+					if (previousNode.nextSibling !== record.start) {
+						range.setStartBefore(record.start);
+						range.setEndAfter(record.end);
+						end.parentNode.insertBefore(range.extractContents(), previousNode.nextSibling);
+					}
+					previousNode = record.end;
+					record.stateKeys = Object.keys(item);
+					loopRecords.set(id, record);
 				}
-				for (const [id, { component: loopComponent, dispose }] of previousRecords) {
+				for (const [id, record] of previousRecords) {
 					if (loopRecords.has(id)) continue;
-					dispose();
-					resolveElement(loopComponent).remove();
+					record.dispose();
+					range.setStartBefore(record.start);
+					range.setEndAfter(record.end);
+					range.deleteContents();
 				}
 			});
 		}

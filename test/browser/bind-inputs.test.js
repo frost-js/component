@@ -210,6 +210,33 @@ test.describe('Component input bindings', () => {
     });
 
     for (const multiple of [false, true]) {
+        for (const binding of ['value', 'text']) {
+            test(`syncs ${multiple ? 'multiple' : 'single'} select values with bound option ${binding}`, async ({ page }) => {
+                await defineComponent(page, 'x-component', 'XComponent', `
+                    <div>
+                        <select ${multiple ? 'multiple' : ''} x:bind="choice">
+                            <option value="a">A</option>
+                            ${binding === 'value' ? '<option :value="label">B</option>' : '<option>{label}</option>'}
+                        </select>
+                    </div>
+                `);
+                await page.setContent(`<x-component label="b" choice="${multiple ? '[\'b\']' : 'b'}"></x-component>`);
+                await waitForComponent(page, 'x-component');
+
+                const select = page.locator('select');
+                await expect.poll(() => select.evaluate((element) => [...element.selectedOptions].map((option) => option.value)))
+                    .toEqual(['b']);
+
+                await updateState(page, 'x-component', { label: 'c' });
+                await expect.poll(() => select.evaluate((element) => [...element.selectedOptions].map((option) => option.value)))
+                    .toEqual([]);
+
+                await updateState(page, 'x-component', { label: 'b' });
+                await expect.poll(() => select.evaluate((element) => [...element.selectedOptions].map((option) => option.value)))
+                    .toEqual(['b']);
+            });
+        }
+
         test(`restores ${multiple ? 'multiple' : 'single'} select values when conditional options appear`, async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', `
                 <div>

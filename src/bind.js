@@ -386,7 +386,12 @@ function bindInput(component, element, name, value) {
         if (element.localName === 'select') {
             // Option changes do not rerun the state effect, so reapply the selection.
             const observer = new MutationObserver(update);
-            observer.observe(element, { childList: true, subtree: true });
+            observer.observe(element, {
+                attributeFilter: ['value'],
+                characterData: true,
+                childList: true,
+                subtree: true,
+            });
             getEffectScope(component)?.cleanups.add(() => observer.disconnect());
         }
 
