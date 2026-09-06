@@ -41,6 +41,9 @@ const booleanAttributes = new Set([
     'shadowrootserializable',
 ]);
 
+/** @type {WeakSet<Text>} */
+const boundTextNodes = new WeakSet();
+
 /**
  * Binds an element subtree to a component.
  * @param {Component} component The component that owns bindings.
@@ -431,6 +434,10 @@ function bindProperty(component, element, name, value) {
  * @param {Text} node The text node to bind.
  */
 function bindText(component, node) {
+    if (boundTextNodes.has(node)) {
+        return;
+    }
+
     const raw = node.textContent;
     if (!raw || !raw.includes('{')) {
         return;
@@ -511,6 +518,9 @@ function bindText(component, node) {
     if (parts.every((part) => typeof part === 'string')) {
         return;
     }
+
+    // Prevent children from interpreting slotted binding output as expressions.
+    boundTextNodes.add(node);
 
     component.effect(() => {
         node.textContent = parts

@@ -1,5 +1,5 @@
 import { expect, test } from '#test';
-import { defineComponent, initializePage, updateState } from '../support/utils.js';
+import { defineComponent, initializePage, updateState, waitForComponent } from '../support/utils.js';
 
 test.describe('Component slots', () => {
     test.beforeEach(async ({ page }) => {
@@ -78,6 +78,47 @@ test.describe('Component slots', () => {
 
         await updateState(page, 'x-child', { count: 5 });
         await expect(slot).toHaveText('2');
+    });
+
+    test('keeps expression-like slotted values literal without executing them', async ({ page }) => {
+        await defineComponent(page, 'x-child', 'XChild', '<div><slot></slot><slot name="body"></slot></div>');
+        await defineComponent(page, 'x-parent', 'XParent', '<div><x-child><span class="label">{label}</span><span class="label" slot="body">{label}</span></x-child></div>');
+
+        const label = '{{ window._slotExpressionExecuted = true }}';
+        await page.evaluate((label) => {
+            window._slotExpressionExecuted = false;
+            const parent = document.createElement('x-parent');
+            parent.state.label = label;
+            document.body.appendChild(parent);
+        }, label);
+        await waitForComponent(page, 'x-parent');
+
+        expect(await page.evaluate(() => window._slotExpressionExecuted)).toBe(false);
+        const labels = page.locator('[x\\:component="x-parent"] .label');
+        await expect(labels).toHaveText([label, label]);
+
+        const updated = `Updated ${label}`;
+        await updateState(page, 'x-parent', { label: updated });
+        await expect(labels).toHaveText([updated, updated]);
+        expect(await page.evaluate(() => window._slotExpressionExecuted)).toBe(false);
+    });
+
+    test('keeps brace-containing slotted values reactive in the parent scope', async ({ page }) => {
+        await defineComponent(page, 'x-child', 'XChild', '<div><b id="own">{label}</b><slot></slot></div>');
+        await defineComponent(page, 'x-parent', 'XParent', '<div><x-child label="child"><span id="slot">{label}</span></x-child></div>');
+        await page.setContent('<x-parent label="Price {USD}"></x-parent>');
+        await waitForComponent(page, 'x-parent');
+
+        const slot = page.locator('#slot');
+        await expect(slot).toHaveText('Price {USD}');
+        await expect(page.locator('#own')).toHaveText('child');
+
+        await updateState(page, 'x-child', { label: 'child updated', USD: 'overwritten' });
+        await expect(page.locator('#own')).toHaveText('child updated');
+        await expect(slot).toHaveText('Price {USD}');
+
+        await updateState(page, 'x-parent', { label: 'Total {EUR}' });
+        await expect(slot).toHaveText('Total {EUR}');
     });
 
     test('binds parent-authored default slot content to the parent scope', async ({ page }) => {
