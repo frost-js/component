@@ -239,6 +239,8 @@ Use `.prop` to assign custom JavaScript properties on DOM elements:
 
 `.prop` is intentionally limited to custom properties. Built-in DOM properties such as `.value` are not supported.
 
+Bindings assign `null` and `undefined` directly when cleared, so custom setters receive those values. Ordinary custom properties remain present with the assigned value.
+
 ### Events
 
 Use `@event` to attach handlers.

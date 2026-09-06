@@ -419,12 +419,7 @@ function bindProperty(component, element, name, value) {
     const callback = evaluator(component, value, ['property', property]);
 
     component.effect(() => {
-        const result = callback();
-        if (isEmpty(result)) {
-            delete element[property];
-        } else {
-            element[property] = result;
-        }
+        element[property] = callback();
     });
 };
 

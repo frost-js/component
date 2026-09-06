@@ -1,5 +1,5 @@
 import { expect, test } from '#test';
-import { attachMethod, defineComponent, initializePage, waitForComponent } from '../support/utils.js';
+import { attachMethod, defineComponent, initializePage, updateState, waitForComponent } from '../support/utils.js';
 
 test.describe('Component property bindings', () => {
     test.beforeEach(async ({ page }) => {
@@ -23,7 +23,7 @@ test.describe('Component property bindings', () => {
         expect(serviceName).toBe('api');
     });
 
-    test('clears element properties when expression becomes empty', async ({ page }) => {
+    test('assigns null and undefined to cleared element properties', async ({ page }) => {
         await defineComponent(page, 'x-parent', 'XParent', '<div><button id="target" .token="token"></button></div>');
 
         await page.setContent('<x-parent token="abc"></x-parent>');
@@ -36,18 +36,17 @@ test.describe('Component property bindings', () => {
 
         expect(initial).toBe('abc');
 
-        await page.evaluate(() => {
-            const parent = document.querySelector('[x\\:component="x-parent"]');
-            parent.component.state.token = null;
-        });
-
-        await page.waitForFunction(() => {
-            const target = document.querySelector('[x\\:component="x-parent"] #target');
-            return target && !('token' in target);
-        });
+        const target = page.locator('[x\\:component="x-parent"] #target');
+        for (const value of [null, undefined]) {
+            await updateState(page, 'x-parent', { token: value });
+            await expect.poll(() => target.evaluate((element) => ({
+                present: Object.hasOwn(element, 'token'),
+                value: element.token,
+            }))).toEqual({ present: true, value });
+        }
     });
 
-    test('binds prototype-defined properties on user custom elements', async ({ page }) => {
+    test('updates prototype-defined properties including cleared values', async ({ page }) => {
         await page.evaluate(() => {
             class DataTarget extends HTMLElement {
                 get payload() {
@@ -68,8 +67,16 @@ test.describe('Component property bindings', () => {
 
         await page.setContent('<x-parent></x-parent>');
 
-        const name = await page.locator('[x\\:component="x-parent"] #target').evaluate((element) => element.payload.name);
-        expect(name).toBe('api');
+        const target = page.locator('[x\\:component="x-parent"] #target');
+        await expect.poll(() => target.evaluate((element) => element.payload?.name)).toBe('api');
+
+        for (const value of [null, undefined]) {
+            await updateState(page, 'x-parent', { payload: value });
+            await expect.poll(() => target.evaluate((element) => element.payload)).toBe(value);
+
+            await updateState(page, 'x-parent', { payload: { name: 'api' } });
+            await expect.poll(() => target.evaluate((element) => element.payload?.name)).toBe('api');
+        }
     });
 
     test('throws when binding built-in DOM properties', async ({ page }) => {

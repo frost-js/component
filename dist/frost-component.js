@@ -923,9 +923,7 @@
 		if (owner && !customOwner) throw new Error(`Property binding ".${property}" only supports custom properties`);
 		const callback = evaluator(component, value, ["property", property]);
 		component.effect(() => {
-			const result = callback();
-			if (isEmpty(result)) delete element[property];
-			else element[property] = result;
+			element[property] = callback();
 		});
 	}
 	/**
