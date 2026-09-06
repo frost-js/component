@@ -1018,6 +1018,7 @@
 	*/
 	function parseBlocks(element, conditionals = [], loops = []) {
 		const walker = document.createTreeWalker(element, NodeFilter.SHOW_ELEMENT, { acceptNode(node) {
+			if (node.hasAttribute("x:else") || node.hasAttribute("x:else-if")) return NodeFilter.FILTER_REJECT;
 			return node.hasAttribute("x:if") || node.hasAttribute("x:each") ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
 		} });
 		const nodes = [];

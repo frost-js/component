@@ -46,6 +46,50 @@ test.describe('Component blocks', () => {
         await expect(root.locator('#c')).toHaveCount(0);
     });
 
+    for (const directive of ['x:else', 'x:else-if']) {
+        test(`defers nested blocks inside ${directive} until activation`, async ({ page }) => {
+            const errors = [];
+            page.on('pageerror', (error) => errors.push(error.message));
+
+            const branch = directive === 'x:else-if' ? 'x:else-if="ready"' : 'x:else';
+            await defineComponent(page, 'x-child', 'XChild', '<li>{name}</li>');
+            await defineComponent(page, 'x-parent', 'XParent', `
+                <div>
+                    <p id="loading" x:if="loading">Loading</p>
+                    <section ${branch}>
+                        <strong id="name" x:if="{ this.state.user.name }">{{ this.state.user.name }}</strong>
+                        <ul><x-child x:each="{ this.state.user.items }"></x-child></ul>
+                    </section>
+                    <span id="after" x:if="after">After</span>
+                </div>
+            `);
+            await page.setContent('<x-parent loading="true" ready="false" user="null" after="true"></x-parent>');
+
+            const root = page.locator('[x\\:component="x-parent"]');
+            await expect.poll(() => root.evaluate((element) => element.component.loaded)).toBe(true);
+            await expect(root.locator('#loading')).toHaveText('Loading');
+            await expect(root.locator('section')).toHaveCount(0);
+            await expect(root.locator('#after')).toHaveText('After');
+            expect(errors).toEqual([]);
+
+            await updateState(page, 'x-parent', {
+                user: { name: 'Ada', items: [{ id: 1, name: 'First' }] },
+                ready: true,
+                loading: false,
+            });
+            await expect(root.locator('#loading')).toHaveCount(0);
+            await expect(root.locator('#name')).toHaveText('Ada');
+            await expect(root.locator('li')).toHaveText(['First']);
+
+            await updateState(page, 'x-parent', {
+                user: { name: 'Grace', items: [{ id: 1, name: 'Updated' }, { id: 2, name: 'Second' }] },
+            });
+            await expect(root.locator('#name')).toHaveText('Grace');
+            await expect(root.locator('li')).toHaveText(['Updated', 'Second']);
+            expect(errors).toEqual([]);
+        });
+    }
+
     test('processes multiple sibling conditional blocks', async ({ page }) => {
         await defineComponent(
             page,
