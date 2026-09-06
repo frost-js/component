@@ -1,5 +1,5 @@
 import { expect, test } from '#test';
-import { attachMethod, defineComponent, flushTasks, initializePage } from '../support/utils.js';
+import { attachMethod, defineComponent, flushTasks, initializePage, updateState, waitForComponent } from '../support/utils.js';
 
 test.describe('Suspense component', () => {
     test.beforeEach(async ({ page }) => {
@@ -44,6 +44,98 @@ test.describe('Suspense component', () => {
 
         await expect(page.locator('#fallback')).toHaveCount(0);
         await expect(page.locator('#child')).toHaveText('ready');
+    });
+
+    test('keeps unwrapped content inside its conditional branch', async ({ page }) => {
+        const errors = [];
+        page.on('pageerror', (error) => errors.push(error.message));
+        await defineComponent(page, 'x-parent', 'XParent', `
+            <div id="parent">
+                <x-suspense x:if="{ this.state.count > 0 }">
+                    <template slot="fallback"><span id="fallback">loading</span></template>
+                    Before
+                    <input value="Draft text">
+                    <span id="content">ready</span>
+                    After
+                </x-suspense>
+                <p x:else>Empty</p>
+            </div>
+        `);
+        await page.evaluate(() => window.Component.bootstrap());
+        await page.setContent('<x-parent count="1"></x-parent>');
+        await waitForComponent(page, 'x-parent');
+
+        const parent = page.locator('#parent');
+        const input = page.locator('input');
+        await expect(parent.locator(':scope > #content')).toBeVisible();
+        await expect(parent).toHaveText('Before ready After');
+        await page.evaluate(() => {
+            window._input = document.querySelector('input');
+        });
+        await input.fill('Edited text');
+        await input.evaluate((element) => element.setSelectionRange(1, 4));
+
+        await updateState(page, 'x-parent', { count: 2 });
+        await expect(input).toBeFocused();
+        expect(await input.evaluate((element) => [element.selectionStart, element.selectionEnd])).toEqual([1, 4]);
+
+        for (const count of [3, 4]) {
+            await updateState(page, 'x-parent', { count: 0 });
+            await expect(parent).toHaveText('Empty');
+            await expect(input).toHaveCount(0);
+            await expect(page.locator('#content')).toHaveCount(0);
+
+            await updateState(page, 'x-parent', { count });
+            await expect(parent).toHaveText('Before ready After');
+            await expect(parent.locator(':scope > #content')).toBeVisible();
+            await expect(input).toHaveValue('Edited text');
+            await expect(page.locator('#fallback')).toHaveCount(0);
+            expect(await input.evaluate((element) => element === window._input)).toBe(true);
+        }
+
+        expect(errors).toEqual([]);
+    });
+
+    test('unwraps content when loading finishes while its conditional is hidden', async ({ page }) => {
+        const errors = [];
+        page.on('pageerror', (error) => errors.push(error.message));
+        await defineComponent(page, 'x-delay', 'XDelay', '<div id="child">ready</div>');
+        await attachMethod(page, 'XDelay', 'initialize', function() {
+            this.deferLoad(new Promise((resolve) => {
+                window._resolveLoad = resolve;
+            }));
+            window._child = this;
+        });
+        await defineComponent(page, 'x-parent', 'XParent', `
+            <div id="parent">
+                <x-suspense x:if="show">
+                    <template slot="fallback"><span id="fallback">loading</span></template>
+                    <x-delay></x-delay>
+                    <span id="content">remaining</span>
+                </x-suspense>
+            </div>
+        `);
+        await page.evaluate(() => window.Component.bootstrap());
+        await page.setContent('<x-parent show="true"></x-parent>');
+
+        await page.waitForFunction(() => window._resolveLoad);
+        await expect(page.locator('#fallback')).toBeVisible();
+        await expect(page.locator('#child')).toBeHidden();
+
+        await updateState(page, 'x-parent', { show: false });
+        await expect(page.locator('#parent')).toBeEmpty();
+        await page.evaluate(() => window._resolveLoad());
+        await page.waitForFunction(() => window._child.loaded);
+        await flushTasks(page);
+        await expect(page.locator('#parent')).toBeEmpty();
+
+        await updateState(page, 'x-parent', { show: true });
+        await waitForComponent(page, 'x-parent');
+        await expect(page.locator('#parent > #child')).toBeVisible();
+        await expect(page.locator('#parent > #content')).toBeVisible();
+        await expect(page.locator('#fallback')).toHaveCount(0);
+        expect(await page.locator('#child').evaluate((element) => element.component === window._child)).toBe(true);
+        expect(errors).toEqual([]);
     });
 
     test('waits for children added while showing the fallback', async ({ page }) => {

@@ -1293,14 +1293,18 @@
 	function processConditionals(component, conditionals) {
 		for (const cases of conditionals) {
 			const conditions = [];
-			for (const { condition, element, end } of cases) conditions.push({
-				attached: false,
-				callback: evaluator(component, condition, ["conditional"]),
-				get element() {
-					return resolveElement(element);
-				},
-				end
-			});
+			for (const { condition, element, start, end } of cases) {
+				const fragment = document.createDocumentFragment();
+				fragment.appendChild(element);
+				conditions.push({
+					attached: false,
+					callback: evaluator(component, condition, ["conditional"]),
+					element,
+					start,
+					end,
+					fragment
+				});
+			}
 			const getActiveCondition = () => conditions.find((condition) => condition.callback());
 			component.effect(() => {
 				const activeCondition = getActiveCondition();
@@ -1314,8 +1318,8 @@
 						}, () => condition === getActiveCondition());
 						condition.attached = true;
 					}
-					if (condition.element.nextSibling !== condition.end) condition.end.parentNode.insertBefore(condition.element, condition.end);
-				} else condition.element.remove();
+					if (condition.fragment.hasChildNodes()) condition.end.parentNode.insertBefore(condition.fragment, condition.end);
+				} else while (condition.start.nextSibling !== condition.end) condition.fragment.appendChild(condition.start.nextSibling);
 			});
 		}
 	}

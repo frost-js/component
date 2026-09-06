@@ -161,14 +161,17 @@ function parseLoop(element) {
 export function processConditionals(component, conditionals) {
     for (const cases of conditionals) {
         const conditions = [];
-        for (const { condition, element, end } of cases) {
+        for (const { condition, element, start, end } of cases) {
+            const fragment = document.createDocumentFragment();
+            fragment.appendChild(element);
+
             conditions.push({
                 attached: false,
                 callback: evaluator(component, condition, ['conditional']),
-                get element() {
-                    return resolveElement(element);
-                },
+                element,
+                start,
                 end,
+                fragment,
             });
         }
 
@@ -190,11 +193,13 @@ export function processConditionals(component, conditionals) {
                         condition.attached = true;
                     }
 
-                    if (condition.element.nextSibling !== condition.end) {
-                        condition.end.parentNode.insertBefore(condition.element, condition.end);
+                    if (condition.fragment.hasChildNodes()) {
+                        condition.end.parentNode.insertBefore(condition.fragment, condition.end);
                     }
                 } else {
-                    condition.element.remove();
+                    while (condition.start.nextSibling !== condition.end) {
+                        condition.fragment.appendChild(condition.start.nextSibling);
+                    }
                 }
             }
         });
