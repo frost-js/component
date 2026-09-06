@@ -43,6 +43,28 @@ test.describe('Component event bindings', () => {
         expect(count).toBe(1);
     });
 
+    test('evaluates function-valued handler expressions once during binding', async ({ page }) => {
+        await page.evaluate(() => {
+            window._handlerCreations = 0;
+        });
+        await defineComponent(page, 'x-component', 'XComponent', '<button @click="(window._handlerCreations++, (event) => { this.state.count++; this.state.eventType = event.type; })"></button>');
+        await page.setContent('<x-component count="0"></x-component>');
+        await waitForComponent(page, 'x-component');
+
+        const root = page.locator('[x\\:component="x-component"]');
+        expect(await page.evaluate(() => window._handlerCreations)).toBe(1);
+        expect(await root.evaluate((element) => element.component.state.count)).toBe(0);
+
+        await root.click();
+        await root.click();
+
+        expect(await root.evaluate((element) => ({
+            count: element.component.state.count,
+            eventType: element.component.state.eventType,
+        }))).toEqual({ count: 2, eventType: 'click' });
+        expect(await page.evaluate(() => window._handlerCreations)).toBe(1);
+    });
+
     test('binds component this for async normal function handlers', async ({ page }) => {
         await defineComponent(page, 'x-component', 'XComponent', '<button @click="async function(event) { await Promise.resolve(); this.state.eventType = event.type; }"></button>');
 
@@ -60,6 +82,7 @@ test.describe('Component event bindings', () => {
         await page.setContent('<x-component></x-component>');
         const error = await errorPromise;
         expect(error.message).toContain('must be a component method, function expression, or braced statement body');
+        expect(await page.locator('[x\\:component="x-component"]').evaluate((element) => element.component.state.count)).toBe(1);
     });
 
     test('throws when event handler resolves to a non-function component property', async ({ page }) => {

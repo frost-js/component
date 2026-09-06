@@ -824,11 +824,12 @@
 		else {
 			const factory = createFunction(component, ["event", eventName], `"use strict"; return (${handlerValue})`);
 			try {
-				if (typeof factory.call(Object.freeze({})) !== "function") throw new Error();
+				const result = factory.call(component);
+				if (typeof result !== "function") throw new Error();
+				callback = result.bind(component);
 			} catch {
 				throw new Error(`Event handler "${handlerValue}" must be a component method, function expression, or braced statement body`);
 			}
-			callback = factory.call(component).bind(component);
 		}
 		const once = params.includes("once");
 		let ran = false;

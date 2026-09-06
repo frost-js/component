@@ -248,18 +248,18 @@ function bindEvent(component, element, name, value) {
         );
 
         try {
-            const probe = factory.call(Object.freeze({}));
+            const result = factory.call(component);
 
-            if (typeof probe !== 'function') {
+            if (typeof result !== 'function') {
                 throw new Error();
             }
+
+            callback = result.bind(component);
         } catch {
             throw new Error(
                 `Event handler "${handlerValue}" must be a component method, function expression, or braced statement body`,
             );
         }
-
-        callback = factory.call(component).bind(component);
     }
 
     const once = params.includes('once');

@@ -251,6 +251,8 @@ Valid handler forms are:
 - Function expressions such as `@remove="(event) => { ... }"`
 - Braced statement bodies such as `@click="{ this.state.count++ }"`
 
+Function-valued expressions are evaluated once when the binding is created, with the component as `this`. The resulting function runs when the event fires. Validation checks the returned value, so an invalid expression can have side effects before it is rejected.
+
 Supported modifiers:
 
 - `.prevent`
