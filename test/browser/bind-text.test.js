@@ -47,12 +47,108 @@ test.describe('Component text bindings', () => {
         await expect(label).toHaveText('Count: {count');
     });
 
+    test('leaves incomplete expressions containing quoted delimiters as literal text', async ({ page }) => {
+        await defineComponent(page, 'x-component', 'XComponent', '<div><span id="label">Before {{ "}}"</span></div>');
+        await page.setContent('<x-component></x-component>');
+
+        await expect(page.locator('[x\\:component="x-component"] #label')).toHaveText('Before {{ "}}"');
+    });
+
+    test('supports empty expressions and whitespace between braces', async ({ page }) => {
+        await defineComponent(page, 'x-component', 'XComponent', '<div><span id="label">Empty: {{ }} Count: { { this.state.count } }</span></div>');
+        await page.setContent('<x-component count="2"></x-component>');
+
+        await expect(page.locator('[x\\:component="x-component"] #label')).toHaveText('Empty:  Count: 2');
+    });
+
+    for (const [expression, errorMessage] of [
+        ['this.state.count +', /expected/i],
+        ['this.missing()', /missing/],
+    ]) {
+        test(`reports errors in text expressions: ${expression}`, async ({ page }) => {
+            await defineComponent(page, 'x-component', 'XComponent', `<div>{{ ${expression} }}</div>`);
+            const errorPromise = page.waitForEvent('pageerror');
+            await page.setContent('<x-component></x-component>');
+
+            const error = await errorPromise;
+            expect(error.message).toMatch(errorMessage);
+        });
+    }
+
     test('supports nested braces in expressions', async ({ page }) => {
         await defineComponent(page, 'x-component', 'XComponent', '<div><span id="label">{{ ({ value: this.state.count }).value }}</span></div>');
         await page.setContent('<x-component count="2"></x-component>');
 
         const label = page.locator('[x\\:component="x-component"] #label');
         await expect(label).toHaveText('2');
+    });
+
+    for (const [name, expression, value] of [
+        ['closing braces', '/}/.test(this.state.label)', '}'],
+        ['opening braces', '/{/.test(this.state.label)', '{'],
+        ['interpolation delimiters', '/}}/.test(this.state.label)', '}}'],
+        ['escaped slashes', String.raw`/\/}/.test(this.state.label)`, '/}'],
+        ['character classes', '/[}/]/.test(this.state.label)', '/'],
+        ['quantifiers', '/a{2}/.test(this.state.label)', 'aa'],
+        ['function bodies', '(() => { return /}/.test(this.state.label); })()', '}'],
+    ]) {
+        test(`supports regex ${name} in text expressions`, async ({ page }) => {
+            await defineComponent(page, 'x-component', 'XComponent', `<div><span id="label">Result: {{ ${expression} }}; {suffix}</span></div>`);
+            await page.setContent('<x-component suffix="end"></x-component>');
+            await updateState(page, 'x-component', { label: value });
+
+            const label = page.locator('[x\\:component="x-component"] #label');
+            await expect(label).toHaveText('Result: true; end');
+
+            await updateState(page, 'x-component', { label: 'none' });
+            await expect(label).toHaveText('Result: false; end');
+        });
+    }
+
+    for (const expression of [
+        'this.state.count / 2',
+        'this.state.count / /}/.test(this.state.label) / 2',
+        'this.state.count /* }} */ / 2',
+        'this.state.count // }}\n / 2',
+        'this.state.count / 2 // }}\n',
+    ]) {
+        test(`supports division in text expressions: ${expression}`, async ({ page }) => {
+            await defineComponent(page, 'x-component', 'XComponent', `<div><span id="label">{{ ${expression} }}</span></div>`);
+            await page.setContent('<x-component count="8" label="}"></x-component>');
+
+            const label = page.locator('[x\\:component="x-component"] #label');
+            await expect(label).toHaveText('4');
+
+            await updateState(page, 'x-component', { count: 10 });
+            await expect(label).toHaveText('5');
+        });
+    }
+
+    test('ignores delimiters in nested template literals', async ({ page }) => {
+        await defineComponent(page, 'x-component', 'XComponent', '<div><span id="label">{{ `Outer ${`Inner }} ${this.state.count}`}` }}</span></div>');
+        await page.setContent('<x-component count="1"></x-component>');
+
+        const label = page.locator('[x\\:component="x-component"] #label');
+        await expect(label).toHaveText('Outer Inner }} 1');
+
+        await updateState(page, 'x-component', { count: 2 });
+        await expect(label).toHaveText('Outer Inner }} 2');
+    });
+
+    test('does not execute expressions while finding their closing braces', async ({ page }) => {
+        await page.evaluate(() => {
+            window.textRuns = 0;
+        });
+        await defineComponent(page, 'x-component', 'XComponent', '<div><span id="label">{{ (window.textRuns++, /}}/.test(this.state.label)) }}</span></div>');
+        await page.setContent('<x-component label="}}"></x-component>');
+
+        const label = page.locator('[x\\:component="x-component"] #label');
+        await expect(label).toHaveText('true');
+        expect(await page.evaluate(() => window.textRuns)).toBe(1);
+
+        await updateState(page, 'x-component', { label: 'none' });
+        await expect(label).toHaveText('false');
+        expect(await page.evaluate(() => window.textRuns)).toBe(2);
     });
 
     test('supports interpolation with escaped quotes', async ({ page }) => {

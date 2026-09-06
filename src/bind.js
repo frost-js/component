@@ -454,7 +454,10 @@ function bindText(component, node) {
         }
 
         const exprStart = start + 1;
+        const isExpression = raw.slice(exprStart).trimStart().startsWith('{');
 
+        let callback;
+        let syntaxError;
         let stringChar = null;
         let escaped = false;
         let braceDepth = 0;
@@ -496,15 +499,57 @@ function bindText(component, node) {
             }
         }
 
+        if (isExpression) {
+            const compileExpression = (position) => {
+                const inner = raw.slice(exprStart, position).trim();
+                if (!inner.endsWith('}')) {
+                    return null;
+                }
+
+                const expression = inner.slice(1, -1);
+                try {
+                    return evaluator(component, expression.trim() ? `{(${expression})}` : '{}', ['text']);
+                } catch (error) {
+                    if (!(error instanceof SyntaxError)) {
+                        throw error;
+                    }
+
+                    syntaxError = error;
+                    return null;
+                }
+            };
+
+            if (end !== null) {
+                callback = compileExpression(end);
+            }
+
+            // Retry boundaries only when the fast scan cannot parse the expression.
+            // Compilation checks JavaScript syntax without executing the expression.
+            for (let i = exprStart; !callback && i < raw.length; i++) {
+                if (raw[i] !== '}' || i === end) {
+                    continue;
+                }
+
+                callback = compileExpression(i);
+                if (callback) {
+                    end = i;
+                }
+            }
+        }
+
         if (end === null) {
             parts.push(raw.slice(start));
             break;
         }
 
+        if (!callback && syntaxError) {
+            throw syntaxError;
+        }
+
         const inner = raw.slice(exprStart, end).trim();
 
         if (inner) {
-            parts.push(evaluator(component, inner, ['text']));
+            parts.push(callback ?? evaluator(component, inner, ['text']));
         }
 
         index = end + 1;
