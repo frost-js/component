@@ -50,7 +50,7 @@ const mountNode = (node) => {
         }
     }
 
-    if (!isComponent(node.tagName)) {
+    if (!isComponent(node.localName)) {
         return;
     }
 
@@ -109,7 +109,7 @@ const dismountNode = (node) => {
         component.dispatchEvent(new Event('dismounted'));
     }
 
-    if (!isComponent(node.tagName) || !(node.renderRoot instanceof ShadowRoot)) {
+    if (!isComponent(node.localName) || !(node.renderRoot instanceof ShadowRoot)) {
         return;
     }
 

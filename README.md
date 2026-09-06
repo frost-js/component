@@ -241,6 +241,8 @@ Use `.prop` to assign custom JavaScript properties on DOM elements:
 
 Bindings assign `null` and `undefined` directly when cleared, so custom setters receive those values. Ordinary custom properties remain present with the assigned value.
 
+Property bindings on undefined custom elements wait for definition and upgrade, then assign the current state value. The binding leaves the property unset until then.
+
 ### Events
 
 Use `@event` to attach handlers.

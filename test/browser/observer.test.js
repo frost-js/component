@@ -198,7 +198,7 @@ test.describe('Component observers', () => {
                 disconnect() { }
 
                 observe(target) {
-                    window._ioTargets.push(target.tagName.toLowerCase());
+                    window._ioTargets.push(target.localName);
                 }
 
                 unobserve() { }
@@ -233,7 +233,7 @@ test.describe('Component observers', () => {
                 disconnect() { }
 
                 observe(target) {
-                    window._ioTargets.push(target.id || target.tagName.toLowerCase());
+                    window._ioTargets.push(target.id || target.localName);
                 }
 
                 unobserve() { }
@@ -425,7 +425,7 @@ test.describe('Component observers', () => {
                 disconnect() { }
 
                 observe(target) {
-                    window._ioTargets.push(target.tagName.toLowerCase());
+                    window._ioTargets.push(target.localName);
                 }
 
                 unobserve() { }

@@ -1,5 +1,6 @@
 /** @import { default as Component } from './component.js'; */
 
+import { getEffectScope, runInEffectScope } from './effect-scope.js';
 import { evaluator } from './evaluator.js';
 import { createFunction, findPropertyOwner, isComponent, isEmpty, isPlainObject, skipSubtree } from './helpers.js';
 import { setInitialState } from './state.js';
@@ -108,7 +109,7 @@ function bindAttribute(component, element, name, value) {
     const attribute = name.slice(1);
     const callback = evaluator(component, value, ['attribute', attribute]);
 
-    if (isComponent(element.tagName)) {
+    if (isComponent(element.localName)) {
         component.effect(() => {
             const result = callback();
 
@@ -291,7 +292,7 @@ function bindEvent(component, element, name, value) {
 
     element.addEventListener(eventName, handler, options);
 
-    if (isComponent(element.tagName) && !element.initialized) {
+    if (isComponent(element.localName) && !element.initialized) {
         element.addEventListener('initialized', () => {
             if (once && ran) {
                 return;
@@ -405,22 +406,41 @@ function bindProperty(component, element, name, value) {
     const property = name.slice(1)
         .replace(/-([a-z])/g, (_, char) => char.toUpperCase());
 
-    const owner = findPropertyOwner(element, property, { includeSelf: false });
-    const customOwner = findPropertyOwner(
-        customElements.get(element.localName)?.prototype,
-        property,
-        { stopAt: HTMLElement.prototype },
-    );
+    const setup = () => {
+        const owner = findPropertyOwner(element, property, { includeSelf: false });
+        const customOwner = findPropertyOwner(
+            customElements.get(element.localName)?.prototype,
+            property,
+            { stopAt: HTMLElement.prototype },
+        );
 
-    if (owner && !customOwner) {
-        throw new Error(`Property binding ".${property}" only supports custom properties`);
+        if (owner && !customOwner) {
+            throw new Error(`Property binding ".${property}" only supports custom properties`);
+        }
+
+        const callback = evaluator(component, value, ['property', property]);
+
+        component.effect(() => {
+            element[property] = callback();
+        });
+    };
+
+    if (element.localName.includes('-') && !element.matches(':defined')) {
+        const scope = getEffectScope(component);
+        customElements.whenDefined(element.localName).then(() => {
+            if (scope?.disposed) {
+                return;
+            }
+
+            customElements.upgrade(element);
+            if (element.matches(':defined')) {
+                runInEffectScope(component, scope, setup);
+            }
+        });
+        return;
     }
 
-    const callback = evaluator(component, value, ['property', property]);
-
-    component.effect(() => {
-        element[property] = callback();
-    });
+    setup();
 };
 
 /**

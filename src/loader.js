@@ -220,7 +220,7 @@ export function load(nodes, { baseUrl = null, extension = null } = {}) {
             continue;
         }
 
-        const tagName = node.tagName.toLowerCase();
+        const tagName = node.localName;
 
         if (!isComponent(tagName) || customElements.get(tagName)) {
             continue;

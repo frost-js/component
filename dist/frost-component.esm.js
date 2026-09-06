@@ -1,5 +1,71 @@
 import { StateStore, useEffect } from "@fr0st/state";
 
+//#region src/effect-scope.js
+/** @import { default as Component } from './component.js'; */
+/**
+* @typedef {object} EffectScope
+* @property {Set<() => void>} cleanups The effect and nested-scope cleanup callbacks.
+* @property {boolean} disposed Whether the scope has been stopped.
+* @property {() => boolean} isActive Whether this scope and its enclosing branch conditions match.
+*/
+var activeScopes = /* @__PURE__ */ new WeakMap();
+/**
+* Gets the active effect scope for a component.
+* @param {Component} component The component that owns the effects.
+* @returns {EffectScope|undefined} The active scope, if any.
+*/
+function getEffectScope(component) {
+	return activeScopes.get(component);
+}
+/**
+* Runs a callback with its original effect scope, restoring the previous scope afterward.
+* @param {Component} component The component that owns the effects.
+* @param {EffectScope|undefined} scope The scope to activate.
+* @param {() => void} callback The synchronous callback to execute.
+*/
+function runInEffectScope(component, scope, callback) {
+	const previous = activeScopes.get(component);
+	if (scope) activeScopes.set(component, scope);
+	else activeScopes.delete(component);
+	try {
+		callback();
+	} finally {
+		if (previous) activeScopes.set(component, previous);
+		else activeScopes.delete(component);
+	}
+}
+/**
+* Collects effects for a block, including nested scopes and effects created by later runs.
+* @param {Component} component The component that owns the bindings.
+* @param {() => void} callback The synchronous binding setup callback.
+* @param {() => boolean} [isActive] The reactive condition that enables the block's effects.
+* @returns {() => void} Stops and releases the collected effects.
+*/
+function collectEffects(component, callback, isActive) {
+	const parent = activeScopes.get(component);
+	const scope = {
+		cleanups: /* @__PURE__ */ new Set(),
+		disposed: false,
+		isActive: () => (!parent || parent.isActive()) && (!isActive || isActive())
+	};
+	const dispose = () => {
+		if (scope.disposed) return;
+		scope.disposed = true;
+		for (const cleanup of scope.cleanups) cleanup();
+		scope.cleanups.clear();
+		parent?.cleanups.delete(dispose);
+	};
+	parent?.cleanups.add(dispose);
+	try {
+		runInEffectScope(component, scope, callback);
+	} catch (error) {
+		dispose();
+		throw error;
+	}
+	return dispose;
+}
+
+//#endregion
 //#region src/helpers.js
 /** @import { default as Component } from './component.js'; */
 var functionCache = /* @__PURE__ */ new Map();
@@ -12,8 +78,8 @@ var functionCache = /* @__PURE__ */ new Map();
 */
 function findChildren(component, element, components = []) {
 	if (element.component && element.component !== component) components.push(element.component);
-	else if (isComponent(element.tagName)) components.push(element);
-	else if (element.tagName === "SLOT") {
+	else if (isComponent(element.localName)) components.push(element);
+	else if (element instanceof HTMLSlotElement) {
 		const assigned = element.assignedElements({ flatten: true });
 		for (const child of assigned) findChildren(component, child, components);
 	} else for (const child of element.children) findChildren(component, child, components);
@@ -60,7 +126,7 @@ function waitForChildren(component, element = component.rootElement) {
 * @returns {Component[]} The components represented by the element, from inner to outer.
 */
 function findComponentChain(element) {
-	let component = isComponent(element.tagName) && element.initialized && element.renderRoot instanceof ShadowRoot ? element : element.component;
+	let component = isComponent(element.localName) && element.initialized && element.renderRoot instanceof ShadowRoot ? element : element.component;
 	if (component?.element !== element) return [];
 	const owners = [];
 	while (component) {
@@ -87,18 +153,18 @@ function findParent(component) {
 			parent = parent.host;
 			continue;
 		}
-		if (parent.nodeType === Node.ELEMENT_NODE && isComponent(parent.tagName)) return parent;
+		if (parent.nodeType === Node.ELEMENT_NODE && isComponent(parent.localName)) return parent;
 		parent = parent.parentNode;
 	}
 	return null;
 }
 /**
 * Determines whether an element is a component.
-* @param {string} tagName The element tag name.
+* @param {string} tagName The normalized element tag name.
 * @returns {boolean} True when the tag name represents a component.
 */
 function isComponent(tagName) {
-	return tagName.toLowerCase().startsWith("x-");
+	return tagName.startsWith("x-");
 }
 /**
 * Flattens a node list into a list of element nodes and their descendants.
@@ -348,7 +414,7 @@ function bindAttribute(component, element, name, value) {
 	if (!value) return;
 	const attribute = name.slice(1);
 	const callback = evaluator(component, value, ["attribute", attribute]);
-	if (isComponent(element.tagName)) {
+	if (isComponent(element.localName)) {
 		component.effect(() => {
 			const result = callback();
 			if (element.initialized) {
@@ -448,7 +514,7 @@ function bindEvent(component, element, name, value) {
 		passive: params.includes("passive")
 	};
 	element.addEventListener(eventName, handler, options);
-	if (isComponent(element.tagName) && !element.initialized) element.addEventListener("initialized", () => {
+	if (isComponent(element.localName) && !element.initialized) element.addEventListener("initialized", () => {
 		if (once && ran) return;
 		const target = element.element;
 		if (target !== element) {
@@ -521,13 +587,25 @@ function bindProperty(component, element, name, value) {
 	element.removeAttribute(name);
 	if (!value) return;
 	const property = name.slice(1).replace(/-([a-z])/g, (_, char) => char.toUpperCase());
-	const owner = findPropertyOwner(element, property, { includeSelf: false });
-	const customOwner = findPropertyOwner(customElements.get(element.localName)?.prototype, property, { stopAt: HTMLElement.prototype });
-	if (owner && !customOwner) throw new Error(`Property binding ".${property}" only supports custom properties`);
-	const callback = evaluator(component, value, ["property", property]);
-	component.effect(() => {
-		element[property] = callback();
-	});
+	const setup = () => {
+		const owner = findPropertyOwner(element, property, { includeSelf: false });
+		const customOwner = findPropertyOwner(customElements.get(element.localName)?.prototype, property, { stopAt: HTMLElement.prototype });
+		if (owner && !customOwner) throw new Error(`Property binding ".${property}" only supports custom properties`);
+		const callback = evaluator(component, value, ["property", property]);
+		component.effect(() => {
+			element[property] = callback();
+		});
+	};
+	if (element.localName.includes("-") && !element.matches(":defined")) {
+		const scope = getEffectScope(component);
+		customElements.whenDefined(element.localName).then(() => {
+			if (scope?.disposed) return;
+			customElements.upgrade(element);
+			if (element.matches(":defined")) runInEffectScope(component, scope, setup);
+		});
+		return;
+	}
+	setup();
 }
 /**
 * Binds a text node to component expressions.
@@ -614,72 +692,6 @@ function bindText(component, node) {
 	component.effect(() => {
 		node.textContent = parts.map((part) => typeof part === "string" ? part : part()).join("");
 	});
-}
-
-//#endregion
-//#region src/effect-scope.js
-/** @import { default as Component } from './component.js'; */
-/**
-* @typedef {object} EffectScope
-* @property {Set<() => void>} cleanups The effect and nested-scope cleanup callbacks.
-* @property {boolean} disposed Whether the scope has been stopped.
-* @property {() => boolean} isActive Whether this scope and its enclosing branch conditions match.
-*/
-var activeScopes = /* @__PURE__ */ new WeakMap();
-/**
-* Gets the active effect scope for a component.
-* @param {Component} component The component that owns the effects.
-* @returns {EffectScope|undefined} The active scope, if any.
-*/
-function getEffectScope(component) {
-	return activeScopes.get(component);
-}
-/**
-* Runs a callback with its original effect scope, restoring the previous scope afterward.
-* @param {Component} component The component that owns the effects.
-* @param {EffectScope|undefined} scope The scope to activate.
-* @param {() => void} callback The synchronous callback to execute.
-*/
-function runInEffectScope(component, scope, callback) {
-	const previous = activeScopes.get(component);
-	if (scope) activeScopes.set(component, scope);
-	else activeScopes.delete(component);
-	try {
-		callback();
-	} finally {
-		if (previous) activeScopes.set(component, previous);
-		else activeScopes.delete(component);
-	}
-}
-/**
-* Collects effects for a block, including nested scopes and effects created by later runs.
-* @param {Component} component The component that owns the bindings.
-* @param {() => void} callback The synchronous binding setup callback.
-* @param {() => boolean} [isActive] The reactive condition that enables the block's effects.
-* @returns {() => void} Stops and releases the collected effects.
-*/
-function collectEffects(component, callback, isActive) {
-	const parent = activeScopes.get(component);
-	const scope = {
-		cleanups: /* @__PURE__ */ new Set(),
-		disposed: false,
-		isActive: () => (!parent || parent.isActive()) && (!isActive || isActive())
-	};
-	const dispose = () => {
-		if (scope.disposed) return;
-		scope.disposed = true;
-		for (const cleanup of scope.cleanups) cleanup();
-		scope.cleanups.clear();
-		parent?.cleanups.delete(dispose);
-	};
-	parent?.cleanups.add(dispose);
-	try {
-		runInEffectScope(component, scope, callback);
-	} catch (error) {
-		dispose();
-		throw error;
-	}
-	return dispose;
 }
 
 //#endregion
@@ -787,7 +799,7 @@ function parseConditional(element) {
 * @returns {LoopBlock} The parsed loop metadata.
 */
 function parseLoop(element) {
-	if (!isComponent(element.tagName)) throw new Error("Loop elements must be components");
+	if (!isComponent(element.localName)) throw new Error("Loop elements must be components");
 	const iterable = element.getAttribute("x:each") || "items";
 	const identifier = element.getAttribute("x:id") || "id";
 	element.removeAttribute("x:each");
@@ -821,7 +833,7 @@ function processConditionals(component, conditionals) {
 				end
 			};
 			conditions.push(data);
-			if (isComponent(element.tagName)) element.addEventListener("initialized", () => {
+			if (isComponent(element.localName)) element.addEventListener("initialized", () => {
 				data.element = element.element;
 			}, { once: true });
 		}
@@ -1060,11 +1072,11 @@ var Component = class extends HTMLElement {
 	*/
 	constructor() {
 		super();
-		if (!isComponent(this.tagName)) throw new Error("Components must begin with \"x-\"");
+		if (!isComponent(this.localName)) throw new Error("Components must begin with \"x-\"");
 		this.#shadowRoot = this.constructor.shadowMode ? this.attachShadow({ mode: this.constructor.shadowMode }) : null;
 		this.#rootElement = this.render();
 		this.#rootElement.component = this;
-		this.#rootElement.setAttribute("x:component", this.tagName.toLowerCase());
+		this.#rootElement.setAttribute("x:component", this.localName);
 		for (const [key, element] of parseElements(this.#rootElement)) {
 			if (key in this) throw new Error(`Component property "${key}" already exists`);
 			this[key] = element;
@@ -1102,7 +1114,7 @@ var Component = class extends HTMLElement {
 	get element() {
 		if (this.#shadowRoot) return this;
 		let element = this.#rootElement;
-		while (isComponent(element.tagName) && element.rootElement && element.renderRoot === element.rootElement) element = element.rootElement;
+		while (isComponent(element.localName) && element.rootElement && element.renderRoot === element.rootElement) element = element.rootElement;
 		return element;
 	}
 	/**
@@ -1494,7 +1506,7 @@ function load(nodes, { baseUrl = null, extension = null } = {}) {
 	if (!baseUrl) throw new Error("Base URL for components is not set");
 	for (const node of nodes) {
 		if (node.nodeType !== Node.ELEMENT_NODE) continue;
-		const tagName = node.tagName.toLowerCase();
+		const tagName = node.localName;
 		if (!isComponent(tagName) || customElements.get(tagName)) continue;
 		if (loadingComponents.has(tagName)) continue;
 		loadingComponents.add(tagName);
@@ -1584,7 +1596,7 @@ var mountNode = (node) => {
 			component.dispatchEvent(new Event("mounted"));
 		}
 	}
-	if (!isComponent(node.tagName)) return;
+	if (!isComponent(node.localName)) return;
 	if (!node.initialized) {
 		if (pendingComponents.has(node)) return;
 		pendingComponents.add(node);
@@ -1621,7 +1633,7 @@ var dismountNode = (node) => {
 		mountedComponents.delete(component);
 		component.dispatchEvent(new Event("dismounted"));
 	}
-	if (!isComponent(node.tagName) || !(node.renderRoot instanceof ShadowRoot)) return;
+	if (!isComponent(node.localName) || !(node.renderRoot instanceof ShadowRoot)) return;
 	const elements = node.renderRoot.querySelectorAll("*");
 	for (const element of elements) dismountNode(element);
 };

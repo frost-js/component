@@ -134,7 +134,7 @@ function parseConditional(element) {
  * @returns {LoopBlock} The parsed loop metadata.
  */
 function parseLoop(element) {
-    if (!isComponent(element.tagName)) {
+    if (!isComponent(element.localName)) {
         throw new Error('Loop elements must be components');
     }
 
@@ -171,7 +171,7 @@ export function processConditionals(component, conditionals) {
 
             conditions.push(data);
 
-            if (isComponent(element.tagName)) {
+            if (isComponent(element.localName)) {
                 element.addEventListener('initialized', () => {
                     data.element = element.element;
                 }, { once: true });

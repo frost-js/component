@@ -12,9 +12,9 @@ const functionCache = new Map();
 export function findChildren(component, element, components = []) {
     if (element.component && element.component !== component) {
         components.push(element.component);
-    } else if (isComponent(element.tagName)) {
+    } else if (isComponent(element.localName)) {
         components.push(element);
-    } else if (element.tagName === 'SLOT') {
+    } else if (element instanceof HTMLSlotElement) {
         const assigned = element.assignedElements({ flatten: true });
         for (const child of assigned) {
             findChildren(component, child, components);
@@ -93,7 +93,7 @@ export function waitForChildren(component, element = component.rootElement) {
  * @returns {Component[]} The components represented by the element, from inner to outer.
  */
 export function findComponentChain(element) {
-    const isShadowHost = isComponent(element.tagName) &&
+    const isShadowHost = isComponent(element.localName) &&
         element.initialized &&
         element.renderRoot instanceof ShadowRoot;
     let component = isShadowHost ?
@@ -142,7 +142,7 @@ export function findParent(component) {
             continue;
         }
 
-        if (parent.nodeType === Node.ELEMENT_NODE && isComponent(parent.tagName)) {
+        if (parent.nodeType === Node.ELEMENT_NODE && isComponent(parent.localName)) {
             return parent;
         }
 
@@ -154,11 +154,11 @@ export function findParent(component) {
 
 /**
  * Determines whether an element is a component.
- * @param {string} tagName The element tag name.
+ * @param {string} tagName The normalized element tag name.
  * @returns {boolean} True when the tag name represents a component.
  */
 export function isComponent(tagName) {
-    return tagName.toLowerCase().startsWith('x-');
+    return tagName.startsWith('x-');
 };
 
 /**

@@ -252,8 +252,8 @@ test.describe('Component event bindings', () => {
             window.XChild.shadowMode = 'open';
         });
         await attachMethod(page, 'XParent', 'onSave', function(event) {
-            this.state.currentTargetTag = event.currentTarget.tagName.toLowerCase();
-            this.state.targetTag = event.target.tagName.toLowerCase();
+            this.state.currentTargetTag = event.currentTarget.localName;
+            this.state.targetTag = event.target.localName;
         });
 
         await page.setContent('<x-parent></x-parent>');
@@ -317,8 +317,8 @@ test.describe('Component event bindings', () => {
             window.XList.shadowMode = 'open';
         });
         await attachMethod(page, 'XParent', 'onRemove', function(event) {
-            this.state.currentTargetTag = event.currentTarget.tagName.toLowerCase();
-            this.state.targetTag = event.target.tagName.toLowerCase();
+            this.state.currentTargetTag = event.currentTarget.localName;
+            this.state.targetTag = event.target.localName;
             this.state.itemId = event.target.state.id;
         });
 
@@ -361,8 +361,8 @@ test.describe('Component event bindings', () => {
         });
         await attachMethod(page, 'XShell', 'onRemove', function(event) {
             this.state.calls = (this.state.calls || 0) + 1;
-            this.state.currentTargetTag = event.currentTarget.tagName.toLowerCase();
-            this.state.targetTag = event.target.tagName.toLowerCase();
+            this.state.currentTargetTag = event.currentTarget.localName;
+            this.state.targetTag = event.target.localName;
             this.state.detailId = event.detail.id;
             this.state.itemId = event.target.state.id;
         });
@@ -414,8 +414,8 @@ test.describe('Component event bindings', () => {
         });
         await attachMethod(page, 'XApp', 'onRemove', function(event) {
             this.state.calls = (this.state.calls || 0) + 1;
-            this.state.currentTargetTag = event.currentTarget.tagName.toLowerCase();
-            this.state.targetTag = event.target.tagName.toLowerCase();
+            this.state.currentTargetTag = event.currentTarget.localName;
+            this.state.targetTag = event.target.localName;
             this.state.detailId = event.detail.id;
         });
 

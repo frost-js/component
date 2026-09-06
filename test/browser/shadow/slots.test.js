@@ -1,9 +1,28 @@
 import { expect, test } from '#test';
-import { initializePage } from '../../support/utils.js';
+import { defineComponent, initializePage } from '../../support/utils.js';
 
 test.describe('Shadow mode', () => {
     test.beforeEach(async ({ page }) => {
         await initializePage(page);
+    });
+
+    test('distinguishes native slots from SVG elements with the same local name', async ({ page }) => {
+        await defineComponent(page, 'x-slots', 'XSlots', '<div><svg><slot></slot></svg><slot></slot></div>');
+        await page.evaluate(() => {
+            window.XSlots.shadowMode = 'open';
+            document.body.innerHTML = '<x-slots><span>content</span></x-slots>';
+        });
+        await page.waitForFunction(() => document.querySelector('x-slots').loaded);
+
+        const result = await page.evaluate(() => {
+            const host = document.querySelector('x-slots');
+            return {
+                children: host.childComponents.length,
+                content: host.renderRoot.querySelector('div > slot').assignedElements()[0].textContent,
+                svgSlot: host.renderRoot.querySelector('svg > slot') instanceof SVGElement,
+            };
+        });
+        expect(result).toEqual({ children: 0, content: 'content', svgSlot: true });
     });
 
     test('projects slotted content in shadow mode', async ({ page }) => {

@@ -44,7 +44,7 @@ export default class Component extends HTMLElement {
     constructor() {
         super();
 
-        if (!isComponent(this.tagName)) {
+        if (!isComponent(this.localName)) {
             throw new Error('Components must begin with "x-"');
         }
 
@@ -56,7 +56,7 @@ export default class Component extends HTMLElement {
 
         this.#rootElement = this.render();
         this.#rootElement.component = this;
-        this.#rootElement.setAttribute('x:component', this.tagName.toLowerCase());
+        this.#rootElement.setAttribute('x:component', this.localName);
 
         for (const [key, element] of parseElements(this.#rootElement)) {
             if (key in this) {
@@ -114,7 +114,7 @@ export default class Component extends HTMLElement {
         }
 
         let element = this.#rootElement;
-        while (isComponent(element.tagName) && element.rootElement && element.renderRoot === element.rootElement) {
+        while (isComponent(element.localName) && element.rootElement && element.renderRoot === element.rootElement) {
             element = element.rootElement;
         }
 
