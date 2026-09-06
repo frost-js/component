@@ -211,7 +211,7 @@ export function processConditionals(component, conditionals) {
  * @param {LoopBlock[]} loops The loop descriptors to render.
  */
 export function processLoops(component, loops) {
-    for (const { iterable, identifier, element, end } of loops) {
+    for (const { iterable, identifier, element, start, end } of loops) {
         let loopRecords = new Map();
         const callback = evaluator(component, iterable, ['loop'], []);
         component.effect(() => {
@@ -224,6 +224,7 @@ export function processLoops(component, loops) {
             const previousRecords = loopRecords;
 
             loopRecords = new Map();
+            let previousNode = start;
 
             for (const item of items) {
                 if (!(identifier in item)) {
@@ -256,11 +257,6 @@ export function processLoops(component, loops) {
                     } else {
                         setInitialState(loopComponent, state);
                     }
-
-                    end.parentNode.insertBefore(
-                        loopComponent.initialized ? loopComponent.element : loopComponent,
-                        end,
-                    );
                 } else {
                     loopComponent = element.cloneNode(true);
                     setInitialState(loopComponent, item);
@@ -272,9 +268,15 @@ export function processLoops(component, loops) {
                         processConditionals(component, nestedConditionals);
                         processLoops(component, nestedLoops);
                     });
-
-                    end.parentNode.insertBefore(loopComponent, end);
                 }
+
+                const node = loopComponent.initialized ? loopComponent.element : loopComponent;
+
+                if (previousNode.nextSibling !== node) {
+                    end.parentNode.insertBefore(node, previousNode.nextSibling);
+                }
+
+                previousNode = node;
 
                 loopRecords.set(id, {
                     component: loopComponent,

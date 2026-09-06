@@ -1219,7 +1219,7 @@
 	* @param {LoopBlock[]} loops The loop descriptors to render.
 	*/
 	function processLoops(component, loops) {
-		for (const { iterable, identifier, element, end } of loops) {
+		for (const { iterable, identifier, element, start, end } of loops) {
 			let loopRecords = /* @__PURE__ */ new Map();
 			const callback = evaluator(component, iterable, ["loop"], []);
 			component.effect(() => {
@@ -1227,6 +1227,7 @@
 				if (!Array.isArray(items)) throw new Error(`Iterable "${iterable}" must be an array`);
 				const previousRecords = loopRecords;
 				loopRecords = /* @__PURE__ */ new Map();
+				let previousNode = start;
 				for (const item of items) {
 					if (!(identifier in item)) throw new Error(`Item in "${iterable}" must have a "${identifier}" property`);
 					const id = item[identifier];
@@ -1241,7 +1242,6 @@
 						for (const key of previous.stateKeys) if (!Object.hasOwn(item, key)) state[key] = void 0;
 						if (loopComponent.initialized) loopComponent.state.set(state);
 						else setInitialState(loopComponent, state);
-						end.parentNode.insertBefore(loopComponent.initialized ? loopComponent.element : loopComponent, end);
 					} else {
 						loopComponent = element.cloneNode(true);
 						setInitialState(loopComponent, item);
@@ -1251,8 +1251,10 @@
 							processConditionals(component, nestedConditionals);
 							processLoops(component, nestedLoops);
 						});
-						end.parentNode.insertBefore(loopComponent, end);
 					}
+					const node = loopComponent.initialized ? loopComponent.element : loopComponent;
+					if (previousNode.nextSibling !== node) end.parentNode.insertBefore(node, previousNode.nextSibling);
+					previousNode = node;
 					loopRecords.set(id, {
 						component: loopComponent,
 						dispose,

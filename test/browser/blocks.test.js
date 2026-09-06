@@ -212,6 +212,33 @@ test.describe('Component blocks', () => {
         await expect(item).toHaveText('b');
     });
 
+    for (const count of [1, 3]) {
+        test(`preserves input focus when updating ${count} loop rows without reordering`, async ({ page }) => {
+            await defineComponent(page, 'x-child', 'XChild', '<div class="item"><input value="Draft text"><span>{name}</span></div>');
+            await defineComponent(page, 'x-parent', 'XParent', '<div><x-child x:each="items" x:id="id"></x-child></div>');
+            await page.setContent('<x-parent items="[]"></x-parent>');
+
+            const items = Array.from({ length: count }, (_, index) => ({ id: index, name: `Item ${index}` }));
+            await updateState(page, 'x-parent', { items });
+
+            const rows = page.locator('[x\\:component="x-parent"] .item');
+            await expect(rows.locator('span')).toHaveText(items.map((item) => item.name));
+
+            for (let index = 0; index < count; index++) {
+                const input = rows.nth(index).locator('input');
+                await input.focus();
+                await input.evaluate((element) => element.setSelectionRange(1, 4));
+
+                const updated = items.map((item) => ({ ...item, name: `Updated ${item.id} (${index})` }));
+                await updateState(page, 'x-parent', { items: updated });
+
+                await expect(rows.locator('span')).toHaveText(updated.map((item) => item.name));
+                await expect(input).toBeFocused();
+                expect(await input.evaluate((element) => [element.selectionStart, element.selectionEnd])).toEqual([1, 4]);
+            }
+        });
+    }
+
     test('reuses pending loop components across rapid same-id updates', async ({ page }) => {
         await page.addScriptTag({
             content: `
