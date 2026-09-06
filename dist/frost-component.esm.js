@@ -1,4 +1,4 @@
-import { StateStore, useEffect } from "@fr0st/state";
+import { StateStore, useEffect, useState } from "@fr0st/state";
 
 //#region src/effect-scope.js
 /** @import { default as Component } from './component.js'; */
@@ -1077,35 +1077,41 @@ function parseSlots(element) {
 */
 function createFallback(start, end) {
 	const fallbackEnd = document.createComment("/fallback");
-	let active = true;
-	let dispose;
+	const fragment = document.createDocumentFragment();
+	const active = useState(true);
+	let initialized = false;
 	let observer;
 	const update = () => {
-		if (!active) return;
 		observer?.disconnect();
+		let show = true;
 		let current = fallbackEnd;
-		while ((current = current.nextSibling) && current !== end) {
-			if (current.nodeType !== Node.ELEMENT_NODE && current.nodeType !== Node.TEXT_NODE) continue;
-			active = false;
-			dispose?.();
-			while (start.nextSibling !== fallbackEnd) start.nextSibling.remove();
-			return;
+		while ((current = current.nextSibling) && current !== end) if (current.nodeType === Node.ELEMENT_NODE || current.nodeType === Node.TEXT_NODE) {
+			show = false;
+			break;
 		}
+		active(show);
+		if (show) fallbackEnd.before(fragment);
+		else while (start.nextSibling !== fallbackEnd) fragment.appendChild(start.nextSibling);
 		if (end.parentNode) {
 			observer ??= new MutationObserver(update);
 			observer.observe(end.parentNode, { childList: true });
 		}
 	};
 	const bindFallback = (component) => {
-		if (!active || dispose) return;
-		const [conditionals, loops] = parseBlocks(start);
-		dispose = collectEffects(component, () => {
-			getEffectScope(component).cleanups.add(() => observer?.disconnect());
-			bind(component, start);
-			processConditionals(component, conditionals);
-			processLoops(component, loops);
-		}, () => active);
-		if (!active) dispose();
+		if (initialized) return;
+		initialized = true;
+		getEffectScope(component)?.cleanups.add(() => observer?.disconnect());
+		let bound = false;
+		component.effect(() => {
+			if (bound || !active()) return;
+			const [conditionals, loops] = parseBlocks(start);
+			collectEffects(component, () => {
+				bind(component, start);
+				processConditionals(component, conditionals);
+				processLoops(component, loops);
+			}, active);
+			bound = true;
+		});
 	};
 	return {
 		end: fallbackEnd,

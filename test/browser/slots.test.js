@@ -74,7 +74,7 @@ test.describe('Component slots', () => {
 
     for (const directive of ['x:if', 'x:each']) {
         for (const assigned of [false, true]) {
-            test(`${assigned ? 'discards' : 'renders'} slot fallback containing ${directive}`, async ({ page }) => {
+            test(`${assigned ? 'hides and restores' : 'renders'} slot fallback containing ${directive}`, async ({ page }) => {
                 const errors = [];
                 page.on('pageerror', (error) => errors.push(error.message));
                 await defineComponent(page, 'x-row', 'XRow', '<p class="fallback">Fallback</p>');
@@ -93,13 +93,19 @@ test.describe('Component slots', () => {
                 await expect(root).toHaveText(assigned ? 'Assigned' : '');
                 await updateState(page, 'x-parent', { show: true, items: [{ id: 2 }] });
                 await expect(root).toHaveText(assigned ? 'Assigned' : 'Fallback');
+
+                if (assigned) {
+                    await root.locator('b').evaluate((element) => element.remove());
+                    await expect(root).toHaveText('Fallback');
+                }
+
                 expect(errors).toEqual([]);
             });
         }
     }
 
     for (const directive of ['x:if', 'x:each']) {
-        test(`stops fallback ${directive} effects when content is assigned after loading`, async ({ page }) => {
+        test(`pauses and resumes fallback ${directive} effects after loading`, async ({ page }) => {
             const errors = [];
             page.on('pageerror', (error) => errors.push(error.message));
             await defineComponent(page, 'x-row', 'XRow', '<p class="fallback">Fallback</p>');
@@ -122,11 +128,18 @@ test.describe('Component slots', () => {
             await updateState(page, 'x-parent', { show: true, items: [{ id: 2 }] });
             await flushTasks(page);
             await expect(root).toHaveText('Assigned');
+
+            await root.locator('b').evaluate((element) => element.remove());
+            await expect(root).toHaveText('Fallback');
+            await updateState(page, 'x-parent', { show: false, items: [] });
+            await expect(root).toBeEmpty();
+            await updateState(page, 'x-parent', { show: true, items: [{ id: 3 }] });
+            await expect(root).toHaveText('Fallback');
             expect(errors).toEqual([]);
         });
     }
 
-    test('stops replaced fallback bindings, including nested slots, without stopping other bindings', async ({ page }) => {
+    test('pauses and resumes nested fallback bindings without duplicating them', async ({ page }) => {
         await defineComponent(page, 'x-parent', 'XParent', `
             <div>
                 <b id="label">{label}</b>
@@ -144,16 +157,66 @@ test.describe('Component slots', () => {
         await waitForComponent(page, 'x-parent');
         await expect(page.locator('section')).toHaveText('Initial');
 
-        await page.locator('[x\\:component="x-parent"]').evaluate((element) => {
-            element.component.getSlot().assign(document.createTextNode('Assigned'));
-            window._fallbackReads = 0;
-        });
-        await updateState(page, 'x-parent', { label: 'Updated' });
-        await expect(page.locator('#label')).toHaveText('Updated');
-        await flushTasks(page);
+        const root = page.locator('[x\\:component="x-parent"]');
+        for (const label of ['Updated', 'Latest']) {
+            await root.evaluate((element) => {
+                element.component.getSlot().assign(document.createTextNode('Assigned'));
+                window._fallbackReads = 0;
+            });
+            await updateState(page, 'x-parent', { label });
+            await expect(page.locator('#label')).toHaveText(label);
+            await flushTasks(page);
 
-        expect(await page.evaluate(() => window._fallbackReads)).toBe(0);
-        await expect(page.locator('section')).toHaveCount(0);
+            expect(await page.evaluate(() => window._fallbackReads)).toBe(0);
+            await expect(page.locator('section')).toHaveCount(0);
+
+            await root.evaluate((element) => element.component.getSlot().assigned()[0].remove());
+            await expect(page.locator('section')).toHaveText(label);
+            await expect(page.locator('span')).toHaveText(label);
+            await flushTasks(page);
+            expect(await page.evaluate(() => window._fallbackReads)).toBe(2);
+        }
+    });
+
+    test('waits until fallback is first restored to evaluate its bindings', async ({ page }) => {
+        const errors = [];
+        page.on('pageerror', (error) => errors.push(error.message));
+        await defineComponent(page, 'x-parent', 'XParent', '<div><slot><span>{{ this.state.user.name }}</span></slot></div>');
+        await page.setContent('<x-parent user="null"><b>Assigned</b></x-parent>');
+        await waitForComponent(page, 'x-parent');
+        await expect(page.locator('span')).toHaveCount(0);
+
+        await updateState(page, 'x-parent', { user: { name: 'Restored' } });
+        await page.locator('b').evaluate((element) => element.remove());
+        await expect(page.locator('span')).toHaveText('Restored');
+        expect(errors).toEqual([]);
+    });
+
+    test('restores the same fallback inputs and event handlers after the last assigned node is removed', async ({ page }) => {
+        await defineComponent(page, 'x-parent', 'XParent', '<div><slot><input><button @click="() => { this.state.count++; }">Increment</button></slot><b id="count">{count}</b></div>');
+        await page.setContent('<x-parent count="0"></x-parent>');
+        await waitForComponent(page, 'x-parent');
+        await page.locator('input').fill('Draft');
+        await page.locator('input').evaluate((element) => window._fallbackInput = element);
+
+        const root = page.locator('[x\\:component="x-parent"]');
+        for (const count of [1, 2]) {
+            await root.evaluate((element) => {
+                const fragment = document.createDocumentFragment();
+                fragment.append(document.createElement('i'), document.createElement('i'));
+                element.component.getSlot().assign(fragment);
+            });
+            await expect(page.locator('input')).toHaveCount(0);
+            await page.locator('i').first().evaluate((element) => element.remove());
+            await flushTasks(page);
+            await expect(page.locator('input')).toHaveCount(0);
+
+            await page.locator('i').evaluate((element) => element.remove());
+            await expect(page.locator('input')).toHaveValue('Draft');
+            expect(await page.locator('input').evaluate((element) => element === window._fallbackInput)).toBe(true);
+            await page.locator('button').click();
+            await expect(page.locator('#count')).toHaveText(`${count}`);
+        }
     });
 
     test('preserves focus set during initialization when binding fallback content', async ({ page }) => {
@@ -189,12 +252,21 @@ test.describe('Component slots', () => {
         await updateState(page, 'x-parent', { user: null });
         await flushTasks(page);
         await expect(page.locator('section')).toHaveText('Assigned');
+
+        await updateState(page, 'x-parent', { show: false });
+        await expect(page.locator('section')).toHaveCount(0);
+        await page.locator('[x\\:component="x-parent"]').evaluate((element) => {
+            element.component.getSlot().assigned()[0].remove();
+        });
+        await flushTasks(page);
+        await updateState(page, 'x-parent', { user: { name: 'Restored' }, show: true });
+        await expect(page.locator('span')).toHaveText('Restored');
         expect(errors).toEqual([]);
     });
 
     for (const name of ['', 'heading']) {
         for (const directive of ['x:if', 'x:each']) {
-            test(`preserves ${name || 'default'} slot fallback until an empty ${directive} block renders content`, async ({ page }) => {
+            test(`restores ${name || 'default'} slot fallback when a ${directive} block becomes empty`, async ({ page }) => {
                 const errors = [];
                 page.on('pageerror', (error) => errors.push(error.message));
                 await defineComponent(page, 'x-shell', 'XShell', `<section><slot name="${name}"><i class="fallback">{label}</i></slot></section>`);
@@ -209,10 +281,13 @@ test.describe('Component slots', () => {
                 await updateState(page, 'x-parent', { show: true, items: [{ id: 1 }] });
                 await expect(page.locator('section')).toHaveText(directive === 'x:if' ? 'Heading' : 'Row 1');
                 await expect(page.locator('.fallback')).toHaveCount(0);
+                await updateState(page, 'x-shell', { label: 'Latest' });
                 await updateState(page, 'x-parent', { show: false, items: [] });
-                await expect(page.locator('section')).toBeEmpty();
+                await expect(page.locator('section')).toHaveText('Latest');
                 await updateState(page, 'x-parent', { show: true, items: [{ id: 2 }] });
                 await expect(page.locator('section')).toHaveText(directive === 'x:if' ? 'Heading' : 'Row 2');
+                await updateState(page, 'x-parent', { show: false, items: [] });
+                await expect(page.locator('section')).toHaveText('Latest');
                 expect(errors).toEqual([]);
             });
         }
@@ -236,6 +311,9 @@ test.describe('Component slots', () => {
         await root.evaluate((element) => element.component.getSlot().assign(document.createTextNode('')));
         await expect(root.locator('span')).toHaveCount(0);
         expect(await root.evaluate((element) => element.component.getSlot().assigned().map((node) => node.nodeType))).toEqual([8, 8, 3]);
+
+        await root.evaluate((element) => element.component.getSlot().assigned().at(-1).remove());
+        await expect(root.locator('span')).toHaveText('Fallback');
     });
 
     test('observes assigned blocks after a late-defined root moves the slot markers', async ({ page }) => {
@@ -251,6 +329,8 @@ test.describe('Component slots', () => {
         await updateState(page, 'x-parent', { show: true });
         await expect(page.locator('article')).toHaveText('Heading');
         await expect(page.locator('.fallback')).toHaveCount(0);
+        await updateState(page, 'x-parent', { show: false });
+        await expect(page.locator('article')).toHaveText('Fallback');
         expect(errors).toEqual([]);
     });
 

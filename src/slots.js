@@ -1,5 +1,6 @@
 /** @import { default as Component } from './component.js'; */
 
+import { useState } from '@fr0st/state';
 import { bind } from './bind.js';
 import { parseBlocks, processConditionals, processLoops } from './blocks.js';
 import { collectEffects, getEffectScope } from './effect-scope.js';
@@ -79,30 +80,31 @@ export function parseSlots(element) {
  */
 function createFallback(start, end) {
     const fallbackEnd = document.createComment('/fallback');
-    let active = true;
-    let dispose;
+    const fragment = document.createDocumentFragment();
+    const active = useState(true);
+    let initialized = false;
     let observer;
 
     const update = () => {
-        if (!active) {
-            return;
-        }
-
         observer?.disconnect();
 
+        let show = true;
         let current = fallbackEnd;
         while ((current = current.nextSibling) && current !== end) {
-            if (current.nodeType !== Node.ELEMENT_NODE && current.nodeType !== Node.TEXT_NODE) {
-                continue;
+            if (current.nodeType === Node.ELEMENT_NODE || current.nodeType === Node.TEXT_NODE) {
+                show = false;
+                break;
             }
+        }
 
-            active = false;
-            dispose?.();
+        // Retain the DOM and pause its bindings while assigned content is present.
+        active(show);
+        if (show) {
+            fallbackEnd.before(fragment);
+        } else {
             while (start.nextSibling !== fallbackEnd) {
-                start.nextSibling.remove();
+                fragment.appendChild(start.nextSibling);
             }
-
-            return;
         }
 
         // Blocks insert content directly between their assigned comment markers.
@@ -113,22 +115,28 @@ function createFallback(start, end) {
     };
 
     const bindFallback = (component) => {
-        if (!active || dispose) {
+        if (initialized) {
             return;
         }
 
-        // Assignment must stop nested blocks and bindings before removing their nodes.
-        const [conditionals, loops] = parseBlocks(start);
-        dispose = collectEffects(component, () => {
-            getEffectScope(component).cleanups.add(() => observer?.disconnect());
-            bind(component, start);
-            processConditionals(component, conditionals);
-            processLoops(component, loops);
-        }, () => active);
+        initialized = true;
+        getEffectScope(component)?.cleanups.add(() => observer?.disconnect());
+        let bound = false;
 
-        if (!active) {
-            dispose();
-        }
+        component.effect(() => {
+            if (bound || !active()) {
+                return;
+            }
+
+            // A fallback hidden by initial content binds only when first shown.
+            const [conditionals, loops] = parseBlocks(start);
+            collectEffects(component, () => {
+                bind(component, start);
+                processConditionals(component, conditionals);
+                processLoops(component, loops);
+            }, active);
+            bound = true;
+        });
     };
 
     return { end: fallbackEnd, bind: bindFallback, update };

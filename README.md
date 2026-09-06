@@ -367,7 +367,7 @@ Slots work in both light DOM and shadow DOM components.
 </div>
 ```
 
-In light DOM components, Frost Component replaces descendant `<slot>` elements with markers and moves matching children into place. Fallback content remains until the first element or text node is assigned; comment markers from empty blocks do not replace it. In shadow mode, assigned children continue to behave like native slotted content.
+In light DOM components, Frost Component replaces descendant `<slot>` elements with markers and moves matching children into place. Fallback content is shown when no element or text nodes are assigned; comment markers from empty blocks do not replace it. Removing assigned content restores the same fallback nodes, with bindings paused while hidden and resumed when shown. In shadow mode, assigned children continue to behave like native slotted content.
 
 ## HTML Template Components
 
