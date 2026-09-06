@@ -107,20 +107,26 @@ function waitForChildren(component, element = component.rootElement) {
 				pendingChildren.push(child);
 				child.addEventListener("loaded", check, { once: true });
 			}
-			if (pendingChildren.length) return;
 			observer.disconnect();
+			if (pendingChildren.length) {
+				const targets = /* @__PURE__ */ new Set([element]);
+				if (component.renderRoot instanceof ShadowRoot) targets.add(component);
+				for (const target of targets) {
+					observer.observe(target, {
+						childList: true,
+						subtree: true
+					});
+					for (const slot of [target, ...target.querySelectorAll("slot")]) {
+						if (!(slot instanceof HTMLSlotElement)) continue;
+						for (const assigned of slot.assignedElements({ flatten: true })) targets.add(assigned);
+					}
+				}
+				return;
+			}
 			element.removeEventListener("slotchange", check);
 			resolve();
 		};
 		const observer = new MutationObserver(check);
-		observer.observe(element, {
-			childList: true,
-			subtree: true
-		});
-		if (component.renderRoot instanceof ShadowRoot) observer.observe(component, {
-			childList: true,
-			subtree: true
-		});
 		element.addEventListener("slotchange", check);
 		for (const child of pendingChildren) child.addEventListener("loaded", check, { once: true });
 		check();

@@ -73,6 +73,67 @@ test.describe('Shadow mode', () => {
                 expect(await page.evaluate(() => window._loadedCount)).toBe(1);
             });
         }
+
+        for (const reassign of [false, true]) {
+            test(`loads after removing a pending child from ${reassign ? 'reassigned' : 'forwarded'} slot content in ${shadowMode} mode`, async ({ page }) => {
+                await page.evaluate((shadowMode) => {
+                    class XChild extends window.Component {
+                        static shadowMode = shadowMode;
+
+                        initialize() {
+                            this.deferLoad(new Promise(() => {}));
+                        }
+                    }
+
+                    class XInner extends window.Component {
+                        static shadowMode = shadowMode;
+                    }
+
+                    class XOuter extends window.Component {
+                        static shadowMode = shadowMode;
+
+                        static get template() {
+                            return '<div><x-inner><slot></slot></x-inner></div>';
+                        }
+                    }
+
+                    customElements.define('x-child', XChild);
+                    customElements.define('x-inner', XInner);
+                    customElements.define('x-outer', XOuter);
+                    document.body.innerHTML = '<x-outer><section id="first"><x-child></x-child></section><section id="second" slot="missing"><x-child></x-child></section></x-outer>';
+                    window._outer = document.querySelector('x-outer');
+                    window._inner = window._outer.rootElement.querySelector('x-inner');
+                    window._first = document.querySelector('#first x-child');
+                    window._second = document.querySelector('#second x-child');
+                    window._loads = [];
+                    window._inner.addEventListener('loaded', () => window._loads.push('inner'));
+                    window._outer.addEventListener('loaded', () => window._loads.push('outer'));
+                }, shadowMode);
+                await page.waitForFunction(() => window._first.initialized && window._second.initialized && window._inner.initialized);
+                expect(await page.evaluate(() => [window._inner.loaded, window._outer.loaded])).toEqual([false, false]);
+
+                if (reassign) {
+                    await page.evaluate(() => {
+                        document.querySelector('#first').slot = 'missing';
+                        document.querySelector('#second').slot = '';
+                    });
+                    await page.waitForFunction(() => window._inner.childComponents.includes(window._second));
+                    await page.evaluate(() => window._first.remove());
+                    expect(await page.evaluate(() => [window._inner.loaded, window._outer.loaded])).toEqual([false, false]);
+                }
+
+                await page.evaluate((reassign) => {
+                    (reassign ? window._second : window._first).remove();
+                }, reassign);
+                await expect.poll(() => page.evaluate(() => window._loads)).toEqual(['inner', 'outer']);
+                expect(await page.evaluate((reassign) => ({
+                    innerLoaded: window._inner.loaded,
+                    outerLoaded: window._outer.loaded,
+                    children: window._inner.childComponents.length,
+                    removedChildLoaded: (reassign ? window._second : window._first).loaded,
+                }), reassign)).toEqual({ innerLoaded: true, outerLoaded: true, children: 0, removedChildLoaded: false });
+            });
+        }
     }
 
     test('projects slotted content in shadow mode', async ({ page }) => {
