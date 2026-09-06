@@ -1034,6 +1034,7 @@
 	* @typedef {object} EffectScope
 	* @property {Set<() => void>} cleanups The effect and nested-scope cleanup callbacks.
 	* @property {boolean} disposed Whether the scope has been stopped.
+	* @property {() => boolean} isActive Whether this scope and its enclosing branch conditions match.
 	*/
 	var activeScopes = /* @__PURE__ */ new WeakMap();
 	/**
@@ -1062,16 +1063,18 @@
 		}
 	}
 	/**
-	* Collects effects for a loop row, including nested scopes and effects created by later runs.
+	* Collects effects for a block, including nested scopes and effects created by later runs.
 	* @param {Component} component The component that owns the bindings.
 	* @param {() => void} callback The synchronous binding setup callback.
+	* @param {() => boolean} [isActive] The reactive condition that enables the block's effects.
 	* @returns {() => void} Stops and releases the collected effects.
 	*/
-	function collectEffects(component, callback) {
+	function collectEffects(component, callback, isActive) {
 		const parent = activeScopes.get(component);
 		const scope = {
 			cleanups: /* @__PURE__ */ new Set(),
-			disposed: false
+			disposed: false,
+			isActive: () => (!parent || parent.isActive()) && (!isActive || isActive())
 		};
 		const dispose = () => {
 			if (scope.disposed) return;
@@ -1233,18 +1236,20 @@
 					data.element = element.element;
 				}, { once: true });
 			}
+			const getActiveCondition = () => conditions.find((condition) => condition.callback());
 			component.effect(() => {
-				let matched = false;
-				for (const condition of conditions) if (!matched && condition.callback()) {
+				const activeCondition = getActiveCondition();
+				for (const condition of conditions) if (condition === activeCondition) {
 					if (!condition.attached) {
 						const [nestedConditionals, nestedLoops] = parseBlocks(condition.element);
-						bind(component, condition.element);
-						processConditionals(component, nestedConditionals);
-						processLoops(component, nestedLoops);
+						collectEffects(component, () => {
+							bind(component, condition.element);
+							processConditionals(component, nestedConditionals);
+							processLoops(component, nestedLoops);
+						}, () => condition === getActiveCondition());
 						condition.attached = true;
 					}
 					condition.end.parentNode.insertBefore(condition.element, condition.end);
-					matched = true;
 				} else condition.element.remove();
 			});
 		}
@@ -1638,6 +1643,7 @@
 					this.#pendingEffects.add(ref);
 					return;
 				}
+				if (scope && !scope.isActive()) return;
 				runInEffectScope(this, scope, callback);
 			}, { weak: true });
 			ref.effect = effect;

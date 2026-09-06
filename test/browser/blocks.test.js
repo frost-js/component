@@ -90,6 +90,146 @@ test.describe('Component blocks', () => {
         });
     }
 
+    test('defers hidden branch bindings and preserves state on reactivation', async ({ page }) => {
+        const errors = [];
+        page.on('pageerror', (error) => errors.push(error.message));
+        await defineComponent(page, 'x-child', 'XChild', '<p class="child">{count}</p>');
+        await defineComponent(page, 'x-parent', 'XParent', `
+            <div>
+                <section x:if="user">
+                    <input>
+                    <span :title="{ this.state.user.name }" .payload="{ this.state.user.name }">{{ this.state.user.name }}</span>
+                    <x-child count="1"></x-child>
+                </section>
+            </div>
+        `);
+        await page.evaluate(() => window.Component.bootstrap());
+        await page.setContent('<x-parent user="{ name: \'Ada\' }"></x-parent>');
+        await waitForComponent(page, 'x-parent');
+        await expect(page.locator('section span')).toHaveText('Ada');
+        await page.locator('input').fill('keep this');
+        await page.evaluate(() => {
+            window._branch = document.querySelector('section');
+            window._child = document.querySelector('.child').component;
+            window._child.state.count = 7;
+        });
+        await expect(page.locator('.child')).toHaveText('7');
+
+        for (const user of [null, undefined]) {
+            await updateState(page, 'x-parent', { user });
+            await expect(page.locator('section')).toHaveCount(0);
+            await flushTasks(page);
+            expect(errors).toEqual([]);
+        }
+
+        await updateState(page, 'x-parent', { user: { name: 'Grace' } });
+        await expect(page.locator('section span')).toHaveText('Grace');
+        await expect(page.locator('section span')).toHaveAttribute('title', 'Grace');
+        expect(await page.locator('section span').evaluate((element) => element.payload)).toBe('Grace');
+        await expect(page.locator('input')).toHaveValue('keep this');
+        await expect(page.locator('.child')).toHaveText('7');
+        expect(await page.evaluate(() => {
+            return document.querySelector('section') === window._branch &&
+                document.querySelector('.child').component === window._child;
+        })).toBe(true);
+        expect(errors).toEqual([]);
+    });
+
+    test('guards nested branches and loops when values are cleared before hiding', async ({ page }) => {
+        const errors = [];
+        page.on('pageerror', (error) => errors.push(error.message));
+        await defineComponent(page, 'x-row', 'XRow', '<div class="row">{label}:{name}<input></div>');
+        await defineComponent(page, 'x-parent', 'XParent', `
+            <div>
+                <section x:if="show">
+                    <div x:if="{ this.state.user.name }">
+                        <x-row x:each="{ this.state.user.items }" :label="{ this.state.user.name }"></x-row>
+                    </div>
+                </section>
+            </div>
+        `);
+        await page.evaluate(() => window.Component.bootstrap());
+        await page.setContent('<x-parent show="true" user="{ name: \'Ada\', items: [{ id: 1, name: \'First\' }] }"></x-parent>');
+        await waitForComponent(page, 'x-parent');
+        await expect(page.locator('.row')).toHaveText('Ada:First');
+        await page.locator('input').fill('keep this');
+        await page.evaluate(() => {
+            window._row = document.querySelector('.row');
+        });
+
+        await updateState(page, 'x-parent', { user: null, show: false });
+        await expect(page.locator('section')).toHaveCount(0);
+        await flushTasks(page);
+        expect(errors).toEqual([]);
+
+        await updateState(page, 'x-parent', {
+            user: { name: 'Grace', items: [{ id: 1, name: 'Second' }] },
+        });
+        await flushTasks(page);
+        expect(await page.evaluate(() => window._row.textContent)).toBe('Ada:First');
+
+        await updateState(page, 'x-parent', { show: true });
+        await expect(page.locator('.row')).toHaveText('Grace:Second');
+        await expect(page.locator('input')).toHaveValue('keep this');
+        expect(await page.evaluate(() => document.querySelector('.row') === window._row)).toBe(true);
+        expect(errors).toEqual([]);
+    });
+
+    test('guards previously activated else-if and else bindings', async ({ page }) => {
+        const errors = [];
+        page.on('pageerror', (error) => errors.push(error.message));
+        await defineComponent(page, 'x-parent', 'XParent', `
+            <div>
+                <p id="loading" x:if="loading">Loading</p>
+                <p id="ready" x:else-if="{ this.state.ready && this.state.user.name }">{{ this.readUser('ready') }}</p>
+                <p id="fallback" x:else>{{ this.readUser('fallback') }}</p>
+            </div>
+        `);
+        await attachMethod(page, 'XParent', 'readUser', function(branch) {
+            window._reads.push(branch);
+            return this.state.user.name;
+        });
+        await page.evaluate(() => {
+            window._reads = [];
+        });
+        await page.setContent('<x-parent loading="false" ready="false" user="{ name: \'Ada\' }"></x-parent>');
+        await waitForComponent(page, 'x-parent');
+        await expect(page.locator('#fallback')).toHaveText('Ada');
+
+        await updateState(page, 'x-parent', { ready: true });
+        await expect(page.locator('#ready')).toHaveText('Ada');
+        await page.evaluate(() => {
+            window._reads = [];
+        });
+
+        await updateState(page, 'x-parent', { user: null, loading: true });
+        await expect(page.locator('#loading')).toHaveText('Loading');
+        await flushTasks(page);
+        expect(await page.evaluate(() => window._reads)).toEqual([]);
+        expect(errors).toEqual([]);
+
+        await updateState(page, 'x-parent', {
+            user: { name: 'Grace' },
+            ready: false,
+            loading: false,
+        });
+        await expect(page.locator('#fallback')).toHaveText('Grace');
+        await expect(page.locator('#ready')).toHaveCount(0);
+        expect(await page.evaluate(() => window._reads)).toEqual(['fallback']);
+        expect(errors).toEqual([]);
+    });
+
+    test('still reports expression errors in active branches', async ({ page }) => {
+        await defineComponent(page, 'x-parent', 'XParent', '<div><span x:if="show">{{ this.state.user.name }}</span></div>');
+        await page.setContent('<x-parent show="true" user="{ name: \'Ada\' }"></x-parent>');
+        await waitForComponent(page, 'x-parent');
+
+        const errorPromise = page.waitForEvent('pageerror');
+        await updateState(page, 'x-parent', { user: null });
+        const error = await errorPromise;
+        expect(error.message).toContain('name');
+    });
+
     test('processes multiple sibling conditional blocks', async ({ page }) => {
         await defineComponent(
             page,

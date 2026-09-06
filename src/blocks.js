@@ -178,25 +178,25 @@ export function processConditionals(component, conditionals) {
             }
         }
 
-        component.effect(() => {
-            let matched = false;
-            for (const condition of conditions) {
-                const result = !matched && condition.callback();
+        const getActiveCondition = () => conditions.find((condition) => condition.callback());
 
-                if (result) {
+        component.effect(() => {
+            const activeCondition = getActiveCondition();
+            for (const condition of conditions) {
+                if (condition === activeCondition) {
                     if (!condition.attached) {
                         const [nestedConditionals, nestedLoops] = parseBlocks(condition.element);
 
-                        bind(component, condition.element);
-                        processConditionals(component, nestedConditionals);
-                        processLoops(component, nestedLoops);
+                        collectEffects(component, () => {
+                            bind(component, condition.element);
+                            processConditionals(component, nestedConditionals);
+                            processLoops(component, nestedLoops);
+                        }, () => condition === getActiveCondition());
 
                         condition.attached = true;
                     }
 
                     condition.end.parentNode.insertBefore(condition.element, condition.end);
-
-                    matched = true;
                 } else {
                     condition.element.remove();
                 }

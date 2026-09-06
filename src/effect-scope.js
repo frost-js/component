@@ -4,6 +4,7 @@
  * @typedef {object} EffectScope
  * @property {Set<() => void>} cleanups The effect and nested-scope cleanup callbacks.
  * @property {boolean} disposed Whether the scope has been stopped.
+ * @property {() => boolean} isActive Whether this scope and its enclosing branch conditions match.
  */
 
 const activeScopes = new WeakMap();
@@ -43,14 +44,20 @@ export function runInEffectScope(component, scope, callback) {
 };
 
 /**
- * Collects effects for a loop row, including nested scopes and effects created by later runs.
+ * Collects effects for a block, including nested scopes and effects created by later runs.
  * @param {Component} component The component that owns the bindings.
  * @param {() => void} callback The synchronous binding setup callback.
+ * @param {() => boolean} [isActive] The reactive condition that enables the block's effects.
  * @returns {() => void} Stops and releases the collected effects.
  */
-export function collectEffects(component, callback) {
+export function collectEffects(component, callback, isActive) {
     const parent = activeScopes.get(component);
-    const scope = { cleanups: new Set(), disposed: false };
+    const scope = {
+        cleanups: new Set(),
+        disposed: false,
+        isActive: () => (!parent || parent.isActive()) &&
+            (!isActive || isActive()),
+    };
     const dispose = () => {
         if (scope.disposed) {
             return;

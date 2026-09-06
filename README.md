@@ -326,6 +326,8 @@ Notes:
 
 - `x:else-if` and `x:else` belong to the immediately preceding conditional chain
 - Only the first matching branch is attached
+- Reactive bindings in inactive branches are deferred and resume when the branch is selected again, preserving its DOM and component state
+- Conditional expressions should be free of side effects because they are also evaluated to guard branch bindings
 - Blocks can be nested inside other conditionals and loops
 - `x:if` and `x:each` cannot be used on the same element
 

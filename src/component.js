@@ -289,6 +289,10 @@ export default class Component extends HTMLElement {
                 return;
             }
 
+            if (scope && !scope.isActive()) {
+                return;
+            }
+
             runInEffectScope(this, scope, callback);
         }, { weak: true });
 
