@@ -242,6 +242,65 @@ test.describe('Component autoload', () => {
         expect(events).toEqual(['connected', 'initialized', 'connected']);
     });
 
+    test('reuses compiled inline scripts across instances and reconnections', async ({ page }) => {
+        await page.route('**/components/*', async (route) => {
+            await route.fulfill({
+                status: 200,
+                contentType: 'text/html',
+                body: `
+                    <!-- shadow -->
+                    <script connected>
+                        this._connectedRuns = (this._connectedRuns || 0) + 1;
+                    </script>
+                    <script>
+                        this._initializedRuns = (this._initializedRuns || 0) + 1;
+                    </script>
+                    <div></div>
+                `,
+            });
+        });
+
+        await page.evaluate(() => {
+            const constructor = Function.constructor;
+            window._scriptCompilations = 0;
+            Function.constructor = (...args) => {
+                if (args.at(-1).includes('frost-component://x-cached/script/')) {
+                    window._scriptCompilations++;
+                }
+                return constructor(...args);
+            };
+
+            window.Component.bootstrap({ baseUrl: 'http://test.local/components' });
+            document.body.innerHTML = '<x-cached></x-cached><x-cached></x-cached>';
+        });
+
+        await page.waitForFunction(() => {
+            return [...document.querySelectorAll('x-cached')].every((host) => host.loaded);
+        });
+
+        const result = await page.evaluate(() => {
+            const hosts = [...document.querySelectorAll('x-cached')];
+            hosts[0].remove();
+            document.body.appendChild(hosts[0]);
+
+            return {
+                compilations: window._scriptCompilations,
+                runs: hosts.map((host) => ({
+                    connected: host._connectedRuns,
+                    initialized: host._initializedRuns,
+                })),
+            };
+        });
+
+        expect(result).toEqual({
+            compilations: 2,
+            runs: [
+                { connected: 2, initialized: 1 },
+                { connected: 1, initialized: 1 },
+            ],
+        });
+    });
+
     test('does not define the same component twice when requested concurrently', async ({ page }) => {
         let defineCalls = 0;
 

@@ -1,5 +1,7 @@
 /** @import { default as Component } from './component.js'; */
 
+const functionCache = new Map();
+
 /**
  * Finds child components rendered within an element subtree.
  * @param {Component} component The root component.
@@ -175,9 +177,9 @@ export function skipSubtree(walker) {
 };
 
 /**
- * Creates a deterministic 53-bit hash for source text.
+ * Creates a deterministic 64-bit hash for source text.
  * @param {string} source The source text to hash.
- * @returns {string} The hash encoded in base 36.
+ * @returns {string} The hash encoded in hexadecimal.
  */
 function hashSource(source) {
     let hash1 = 0xDEADBEEF;
@@ -195,15 +197,14 @@ function hashSource(source) {
     hash2 = Math.imul(hash2 ^ (hash2 >>> 16), 2246822507) ^
         Math.imul(hash1 ^ (hash1 >>> 13), 3266489909);
 
-    return (
-        4294967296 * (hash2 & 0x1FFFFF) +
-        (hash1 >>> 0)
-    ).toString(36);
+    return (hash1 >>> 0).toString(16).padStart(8, '0') +
+        (hash2 >>> 0).toString(16).padStart(8, '0');
 };
 
 /**
  * Creates a dynamically compiled function with a stable virtual source URL.
  * The URL hash is derived from the function parameters and body.
+ * Caches up to 1,000 unbound functions, evicting the oldest entry when full.
  * @param {HTMLElement|string} component The component instance or tag name that owns the function.
  * @param {string[]} path The source path segments describing where the function is used.
  * @param {string} body The function body.
@@ -211,16 +212,30 @@ function hashSource(source) {
  * @returns {Function} The compiled function.
  */
 export function createFunction(component, path, body, parameters = []) {
-    const source = [...parameters, body].join('\0');
+    const source = JSON.stringify([...parameters, body]);
     const tagName = typeof component === 'string' ?
         component :
         component.localName;
     const sourcePath = [tagName, ...path, `${hashSource(source)}.js`]
         .map(encodeURIComponent)
         .join('/');
+    const cached = functionCache.get(sourcePath);
 
-    return Function.constructor(
+    if (cached?.source === source) {
+        return cached.callback;
+    }
+
+    const callback = Function.constructor(
         ...parameters,
         `${body}\n//# sourceURL=frost-component://${sourcePath}\n`,
     );
+
+    functionCache.set(sourcePath, { source, callback });
+
+    if (functionCache.size > 1000) {
+        const [oldestKey] = functionCache.keys();
+        functionCache.delete(oldestKey);
+    }
+
+    return callback;
 };

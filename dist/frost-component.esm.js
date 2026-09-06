@@ -2,6 +2,7 @@ import { StateStore, useEffect } from "@fr0st/state";
 
 //#region src/helpers.js
 /** @import { default as Component } from './component.js'; */
+var functionCache = /* @__PURE__ */ new Map();
 /**
 * Finds child components rendered within an element subtree.
 * @param {Component} component The root component.
@@ -116,9 +117,9 @@ function skipSubtree(walker) {
 	return null;
 }
 /**
-* Creates a deterministic 53-bit hash for source text.
+* Creates a deterministic 64-bit hash for source text.
 * @param {string} source The source text to hash.
-* @returns {string} The hash encoded in base 36.
+* @returns {string} The hash encoded in hexadecimal.
 */
 function hashSource(source) {
 	let hash1 = 3735928559;
@@ -130,11 +131,12 @@ function hashSource(source) {
 	}
 	hash1 = Math.imul(hash1 ^ hash1 >>> 16, 2246822507) ^ Math.imul(hash2 ^ hash2 >>> 13, 3266489909);
 	hash2 = Math.imul(hash2 ^ hash2 >>> 16, 2246822507) ^ Math.imul(hash1 ^ hash1 >>> 13, 3266489909);
-	return (4294967296 * (hash2 & 2097151) + (hash1 >>> 0)).toString(36);
+	return (hash1 >>> 0).toString(16).padStart(8, "0") + (hash2 >>> 0).toString(16).padStart(8, "0");
 }
 /**
 * Creates a dynamically compiled function with a stable virtual source URL.
 * The URL hash is derived from the function parameters and body.
+* Caches up to 1,000 unbound functions, evicting the oldest entry when full.
 * @param {HTMLElement|string} component The component instance or tag name that owns the function.
 * @param {string[]} path The source path segments describing where the function is used.
 * @param {string} body The function body.
@@ -142,13 +144,24 @@ function hashSource(source) {
 * @returns {Function} The compiled function.
 */
 function createFunction(component, path, body, parameters = []) {
-	const source = [...parameters, body].join("\0");
+	const source = JSON.stringify([...parameters, body]);
 	const sourcePath = [
 		typeof component === "string" ? component : component.localName,
 		...path,
 		`${hashSource(source)}.js`
 	].map(encodeURIComponent).join("/");
-	return Function.constructor(...parameters, `${body}\n//# sourceURL=frost-component://${sourcePath}\n`);
+	const cached = functionCache.get(sourcePath);
+	if (cached?.source === source) return cached.callback;
+	const callback = Function.constructor(...parameters, `${body}\n//# sourceURL=frost-component://${sourcePath}\n`);
+	functionCache.set(sourcePath, {
+		source,
+		callback
+	});
+	if (functionCache.size > 1e3) {
+		const [oldestKey] = functionCache.keys();
+		functionCache.delete(oldestKey);
+	}
+	return callback;
 }
 
 //#endregion

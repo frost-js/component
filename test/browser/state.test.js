@@ -23,6 +23,25 @@ test.describe('Component state', () => {
         expect(state).toEqual({ count: 3, value: 10, label: 'ok' });
     });
 
+    test('keeps parsed state values independent across instances', async ({ page }) => {
+        await defineComponent(page, 'x-component', 'XComponent', '<div>{{ this.state.value.count }}</div>');
+        await page.setContent(`
+            <x-component value="{ count: 1 }"></x-component>
+            <x-component value="{ count: 2 }"></x-component>
+            <x-component value="{ count: 1 }"></x-component>
+        `);
+
+        const roots = page.locator('[x\\:component="x-component"]');
+        await expect(roots).toHaveText(['1', '2', '1']);
+
+        const values = await roots.evaluateAll((elements) => {
+            elements[0].component.state.value.count = 3;
+            return elements.map((element) => element.component.state.value.count);
+        });
+
+        expect(values).toEqual([3, 2, 1]);
+    });
+
     test('creates nested state stores from object values', async ({ page }) => {
         await defineComponent(page, 'x-component', 'XComponent', '<div></div>');
         await page.setContent('<x-component state="{ user: { name: \'Ada\' } }"></x-component>');
