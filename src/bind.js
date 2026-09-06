@@ -1,8 +1,8 @@
 /** @import { default as Component } from './component.js'; */
 
 import { getEffectScope, runInEffectScope } from './effect-scope.js';
-import { evaluator } from './evaluator.js';
-import { createFunction, findPropertyOwner, isComponent, isEmpty, isPlainObject, skipSubtree } from './helpers.js';
+import { createFunction, evaluator } from './evaluator.js';
+import { findPropertyOwner, isComponent, isEmpty, isPlainObject, skipSubtree } from './helpers.js';
 import { setInitialState } from './state.js';
 
 /**

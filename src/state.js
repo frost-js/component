@@ -1,6 +1,7 @@
 /** @import { default as Component } from './component.js'; */
 
-import { createFunction, isPlainObject } from './helpers.js';
+import { createFunction } from './evaluator.js';
+import { isPlainObject } from './helpers.js';
 
 const initialStates = new WeakMap();
 

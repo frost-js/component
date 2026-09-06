@@ -1,5 +1,6 @@
 import Component from './component.js';
-import { createFunction, isComponent } from './helpers.js';
+import { createFunction } from './evaluator.js';
+import { isComponent } from './helpers.js';
 import { setShadowAssets } from './shadow-assets.js';
 
 const loadedScripts = new Map();

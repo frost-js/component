@@ -3,7 +3,7 @@
 import { bind } from './bind.js';
 import { collectEffects } from './effect-scope.js';
 import { evaluator } from './evaluator.js';
-import { isComponent, skipSubtree } from './helpers.js';
+import { isComponent, resolveElement, skipSubtree } from './helpers.js';
 import { setInitialState } from './state.js';
 
 /**
@@ -166,12 +166,7 @@ export function processConditionals(component, conditionals) {
                 attached: false,
                 callback: evaluator(component, condition, ['conditional']),
                 get element() {
-                    let node = element;
-                    while (isComponent(node.localName) && node.initialized && node.renderRoot === node.rootElement) {
-                        node = node.rootElement;
-                    }
-
-                    return node;
+                    return resolveElement(element);
                 },
                 end,
             });
@@ -271,7 +266,7 @@ export function processLoops(component, loops) {
                     });
                 }
 
-                const node = loopComponent.initialized ? loopComponent.element : loopComponent;
+                const node = resolveElement(loopComponent);
 
                 if (previousNode.nextSibling !== node) {
                     end.parentNode.insertBefore(node, previousNode.nextSibling);
@@ -292,12 +287,7 @@ export function processLoops(component, loops) {
                 }
 
                 dispose();
-
-                if (loopComponent.initialized) {
-                    loopComponent.element.remove();
-                } else {
-                    loopComponent.remove();
-                }
+                resolveElement(loopComponent).remove();
             }
         });
     }

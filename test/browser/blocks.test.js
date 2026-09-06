@@ -446,6 +446,61 @@ test.describe('Component blocks', () => {
         await expect(page.locator('[x\\:component="x-parent"] .item')).toHaveCount(0);
     });
 
+    for (const change of ['removes', 'reorders']) {
+        test(`${change} loop rows during a late-defined root's first connection`, async ({ page }) => {
+            const errors = [];
+            page.on('pageerror', (error) => errors.push(error.message));
+            await defineComponent(page, 'x-row', 'XRow', '<x-leaf></x-leaf>');
+            await defineComponent(page, 'x-parent', 'XParent', '<div><x-row x:each="items"></x-row></div>');
+            await page.evaluate(() => window.Component.bootstrap());
+            await page.setContent('<x-parent items="[{ id: 1 }, { id: 2 }]"></x-parent>');
+            await page.waitForFunction(() => {
+                const leaves = [...document.querySelectorAll('x-leaf')];
+                return leaves.length === 2 && leaves.every((leaf) => leaf.component?.initialized);
+            });
+            await page.evaluate((change) => {
+                window._parent = document.querySelector('[x\\:component="x-parent"]').component;
+                window._rows = [...document.querySelectorAll('x-leaf')].map((leaf) => leaf.component);
+                window._updatedOnce = false;
+
+                class XLeaf extends window.Component {
+                    static get template() {
+                        return '<article>{id}</article>';
+                    }
+
+                    initialize() {
+                        this.state.id = this.parentComponent.state.id;
+                    }
+
+                    onConnected() {
+                        if (!window._updatedOnce) {
+                            window._updatedOnce = true;
+                            window._parent.state.items = change === 'removes' ? [] : [{ id: 2 }, { id: 1 }];
+                        }
+                    }
+                }
+
+                customElements.define('x-leaf', XLeaf);
+            }, change);
+
+            await waitForComponent(page, 'x-parent');
+            await expect(page.locator('article')).toHaveText(change === 'removes' ? [] : ['2', '1']);
+            await expect(page.locator('x-leaf')).toHaveCount(0);
+            if (change === 'reorders') {
+                expect(await page.locator('article').evaluateAll((elements) =>
+                    elements[0].component.parentComponent === window._rows[1] &&
+                    elements[1].component.parentComponent === window._rows[0],
+                )).toBe(true);
+            }
+
+            await updateState(page, 'x-parent', { items: [{ id: 1 }] });
+            await expect(page.locator('article')).toHaveText(['1']);
+            await updateState(page, 'x-parent', { items: [] });
+            await expect(page.locator('article')).toHaveCount(0);
+            expect(errors).toEqual([]);
+        });
+    }
+
     test('reuses initialized loop components and updates state', async ({ page }) => {
         await defineComponent(page, 'x-child', 'XChild', '<div class="item">{name}</div>');
         await defineComponent(page, 'x-parent', 'XParent', '<div><x-child x:each="items" x:id="id"></x-child></div>');
