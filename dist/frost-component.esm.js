@@ -280,7 +280,6 @@ function createFunction(component, path, body, parameters = []) {
 //#endregion
 //#region src/evaluator.js
 /** @import { default as Component } from './component.js'; */
-var textarea = document.createElement("textarea");
 /**
 * Builds an evaluator for a binding expression.
 * @param {Component} component The component that owns the expression.
@@ -290,8 +289,7 @@ var textarea = document.createElement("textarea");
 * @returns {() => *} A callback that resolves the current expression value.
 */
 function evaluator(component, expression, source = ["expression"], defaultValue) {
-	textarea.innerHTML = expression;
-	expression = textarea.value.trim();
+	expression = expression.trim();
 	if (!expression) return () => null;
 	if (expression.startsWith("{") && expression.endsWith("}") || expression.startsWith("({") && expression.endsWith("})")) {
 		expression = expression.slice(1, -1).trim();

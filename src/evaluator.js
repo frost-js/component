@@ -2,8 +2,6 @@
 
 import { createFunction } from './helpers.js';
 
-const textarea = document.createElement('textarea');
-
 /**
  * Builds an evaluator for a binding expression.
  * @param {Component} component The component that owns the expression.
@@ -13,8 +11,7 @@ const textarea = document.createElement('textarea');
  * @returns {() => *} A callback that resolves the current expression value.
  */
 export function evaluator(component, expression, source = ['expression'], defaultValue) {
-    textarea.innerHTML = expression;
-    expression = textarea.value.trim();
+    expression = expression.trim();
 
     if (!expression) {
         return () => null;

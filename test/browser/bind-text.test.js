@@ -170,6 +170,24 @@ test.describe('Component text bindings', () => {
         await expect(label).toHaveText('A:2 B:3');
     });
 
+    for (const [encoded, literal] of [
+        ['&amp;amp;', '&amp;'],
+        ['&amp;apos;', '&apos;'],
+        ['&amp;#39;', '&#39;'],
+    ]) {
+        test(`preserves literal HTML entities in text expressions: ${literal}`, async ({ page }) => {
+            await defineComponent(page, 'x-component', 'XComponent', `<div><span id="label">{{ '${encoded}' + this.state.count }}</span></div>`);
+            await page.setContent('<x-component count="1"></x-component>');
+
+            const label = page.locator('[x\\:component="x-component"] #label');
+            await expect(label).toHaveText(`${literal}1`);
+            await expect.poll(() => label.evaluate((element) => element.parentElement.component.loaded)).toBe(true);
+
+            await updateState(page, 'x-component', { count: 2 });
+            await expect(label).toHaveText(`${literal}2`);
+        });
+    }
+
     test('decodes HTML entities in expressions', async ({ page }) => {
         await defineComponent(page, 'x-component', 'XComponent', '<div><span id="label">{{ this.state.count &gt; 1 ? "yes" : "no" }}</span></div>');
         await page.setContent('<x-component count="1"></x-component>');

@@ -28,6 +28,21 @@ test.describe('Component attribute bindings', () => {
         await expect(box).toHaveAttribute('title', 'world');
     });
 
+    test('preserves literal HTML entities in attribute expressions', async ({ page }) => {
+        await defineComponent(page, 'x-component', 'XComponent', '<div><div id="box" :title="{ \'&amp;apos;\' + this.state.count }" :data-symbol="{ \'&amp;amp;\' }" :data-match="{ this.state.count &gt; 1 }"></div></div>');
+        await page.setContent('<x-component count="1"></x-component>');
+
+        const box = page.locator('[x\\:component="x-component"] #box');
+        await expect(box).toHaveAttribute('title', '&apos;1');
+        await expect(box).toHaveAttribute('data-symbol', '&amp;');
+        await expect(box).toHaveAttribute('data-match', 'false');
+        await expect.poll(() => box.evaluate((element) => element.parentElement.component.loaded)).toBe(true);
+
+        await updateState(page, 'x-component', { count: 2 });
+        await expect(box).toHaveAttribute('title', '&apos;2');
+        await expect(box).toHaveAttribute('data-match', 'true');
+    });
+
     test('removes bound attributes when value is null', async ({ page }) => {
         await defineComponent(page, 'x-component', 'XComponent', '<div><div id="box" :title="title"></div></div>');
         await page.setContent('<x-component title="hello"></x-component>');
