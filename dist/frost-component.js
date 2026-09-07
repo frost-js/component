@@ -458,67 +458,98 @@
 //#region src/effect-scope.js
 /** @import { default as Component } from './component.js'; */
 	/**
-	* @typedef {object} EffectScope
-	* @property {Set<() => void>} cleanups The effect and nested-scope cleanup callbacks.
-	* @property {boolean} disposed Whether the scope has been stopped.
-	* @property {() => boolean} isActive Whether this scope and its enclosing branch conditions match.
+	* Owns the execution context and cleanup callbacks for a group of bindings.
 	*/
-	var activeScopes = /* @__PURE__ */ new WeakMap();
-	/**
-	* Gets the active effect scope for a component.
-	* @param {Component} component The component that owns the effects.
-	* @returns {EffectScope|undefined} The active scope, if any.
-	*/
-	function getEffectScope(component) {
-		return activeScopes.get(component);
-	}
-	/**
-	* Runs a callback with its original effect scope, restoring the previous scope afterward.
-	* @param {Component} component The component that owns the effects.
-	* @param {EffectScope|undefined} scope The scope to activate.
-	* @param {() => void} callback The synchronous callback to execute.
-	*/
-	function runInEffectScope(component, scope, callback) {
-		const previous = activeScopes.get(component);
-		if (scope) activeScopes.set(component, scope);
-		else activeScopes.delete(component);
-		try {
-			callback();
-		} finally {
-			if (previous) activeScopes.set(component, previous);
-			else activeScopes.delete(component);
+	var EffectScope = class {
+		static #activeScopes = /* @__PURE__ */ new WeakMap();
+		#cleanups = /* @__PURE__ */ new Set();
+		#component;
+		#disposed = false;
+		#isActive;
+		/**
+		* Collects effects for a block, including nested scopes and effects created by later runs.
+		* @param {Component} component The component that owns the bindings.
+		* @param {() => void} callback The synchronous binding setup callback.
+		* @param {() => boolean} [isActive] The reactive condition that enables the block's effects.
+		* @returns {() => void} Stops and releases the collected effects.
+		*/
+		static collect(component, callback, isActive) {
+			const parent = this.get(component);
+			const scope = new this(component, () => parent.isActive() && (!isActive || isActive()));
+			const dispose = parent.addCleanup(() => scope.dispose());
+			try {
+				scope.run(callback);
+			} catch (error) {
+				dispose();
+				throw error;
+			}
+			return dispose;
 		}
-	}
-	/**
-	* Collects effects for a block, including nested scopes and effects created by later runs.
-	* @param {Component} component The component that owns the bindings.
-	* @param {() => void} callback The synchronous binding setup callback.
-	* @param {() => boolean} [isActive] The reactive condition that enables the block's effects.
-	* @returns {() => void} Stops and releases the collected effects.
-	*/
-	function collectEffects(component, callback, isActive) {
-		const parent = activeScopes.get(component);
-		const scope = {
-			cleanups: /* @__PURE__ */ new Set(),
-			disposed: false,
-			isActive: () => (!parent || parent.isActive()) && (!isActive || isActive())
-		};
-		const dispose = () => {
-			if (scope.disposed) return;
-			scope.disposed = true;
-			for (const cleanup of scope.cleanups) cleanup();
-			scope.cleanups.clear();
-			parent?.cleanups.delete(dispose);
-		};
-		parent?.cleanups.add(dispose);
-		try {
-			runInEffectScope(component, scope, callback);
-		} catch (error) {
-			dispose();
-			throw error;
+		/**
+		* Gets the active effect scope, creating a default scope for the component if needed.
+		* @param {Component} component The component that owns the effects.
+		* @returns {EffectScope} The current scope for the component.
+		*/
+		static get(component) {
+			let scope = this.#activeScopes.get(component);
+			if (!scope) {
+				scope = new this(component);
+				this.#activeScopes.set(component, scope);
+			}
+			return scope;
 		}
-		return dispose;
-	}
+		/**
+		* Creates an effect scope.
+		* @param {Component} component The component that owns the bindings.
+		* @param {() => boolean} [isActive] Whether the scope's bindings should run.
+		*/
+		constructor(component, isActive) {
+			this.#component = component;
+			this.#isActive = isActive;
+		}
+		/**
+		* Registers cleanup, running it immediately if the scope is already disposed.
+		* @param {() => void} cleanup The cleanup callback.
+		* @returns {() => void} Runs and unregisters the cleanup once.
+		*/
+		addCleanup(cleanup) {
+			const dispose = () => {
+				if (this.#cleanups.delete(dispose)) cleanup();
+			};
+			this.#cleanups.add(dispose);
+			if (this.#disposed) dispose();
+			return dispose;
+		}
+		/**
+		* Stops the scope and releases its registered bindings and nested scopes.
+		*/
+		dispose() {
+			if (this.#disposed) return;
+			this.#disposed = true;
+			for (const cleanup of this.#cleanups) cleanup();
+		}
+		/**
+		* Checks whether the scope and its enclosing branch conditions match.
+		* @returns {boolean} Whether the scope's bindings should run.
+		*/
+		isActive() {
+			return !this.#isActive || this.#isActive();
+		}
+		/**
+		* Runs a callback in this scope, restoring the previous scope afterward.
+		* @param {() => void} callback The synchronous callback to execute.
+		*/
+		run(callback) {
+			if (this.#disposed) return;
+			const previous = this.constructor.get(this.#component);
+			this.constructor.#activeScopes.set(this.#component, this);
+			try {
+				callback();
+			} finally {
+				this.constructor.#activeScopes.set(this.#component, previous);
+			}
+		}
+	};
 
 //#endregion
 //#region src/evaluator.js
@@ -1005,7 +1036,7 @@
 		};
 		target.addEventListener(eventName, handler, options);
 		if (followElement) element.addEventListener("elementchange", update);
-		getEffectScope(component)?.cleanups.add(() => {
+		EffectScope.get(component).addCleanup(() => {
 			target.removeEventListener(eventName, handler, options);
 			element.removeEventListener("elementchange", update);
 		});
@@ -1070,7 +1101,7 @@
 				childList: select,
 				subtree: select
 			});
-			getEffectScope(component)?.cleanups.add(() => observer.disconnect());
+			EffectScope.get(component).addCleanup(() => observer.disconnect());
 		}
 	}
 	/**
@@ -1094,12 +1125,11 @@
 			});
 		};
 		if (element.localName.includes("-") && !element.matches(":defined")) {
-			const scope = getEffectScope(component);
-			customElements.whenDefined(element.localName).then(() => {
-				if (scope?.disposed) return;
+			const scope = EffectScope.get(component);
+			customElements.whenDefined(element.localName).then(() => scope.run(() => {
 				customElements.upgrade(element);
-				if (element.matches(":defined")) runInEffectScope(component, scope, setup);
-			});
+				if (element.matches(":defined")) setup();
+			}));
 			return;
 		}
 		setup();
@@ -1405,7 +1435,7 @@
 				for (const condition of conditions) if (condition === activeCondition) {
 					if (!condition.attached) {
 						const [nestedConditionals, nestedLoops] = parseBlocks(condition.element);
-						collectEffects(component, () => {
+						EffectScope.collect(component, () => {
 							bind(component, condition.element);
 							processConditionals(component, nestedConditionals);
 							processLoops(component, nestedLoops);
@@ -1447,7 +1477,7 @@
 						const loopComponent = element.cloneNode(true);
 						setInitialState(loopComponent, item);
 						const [nestedConditionals, nestedLoops] = parseBlocks(loopComponent);
-						const dispose = collectEffects(component, () => {
+						const dispose = EffectScope.collect(component, () => {
 							bind(component, loopComponent);
 							processConditionals(component, nestedConditionals);
 							processLoops(component, nestedLoops);
@@ -1618,12 +1648,12 @@
 		const bindFallback = (component) => {
 			if (initialized) return;
 			initialized = true;
-			getEffectScope(component)?.cleanups.add(() => observer?.disconnect());
+			EffectScope.get(component).addCleanup(() => observer?.disconnect());
 			let bound = false;
 			component.effect(() => {
 				if (bound || !active() || hasContent()) return;
 				const [conditionals, loops] = parseBlocks(start);
-				collectEffects(component, () => {
+				EffectScope.collect(component, () => {
 					bind(component, start);
 					processConditionals(component, conditionals);
 					processLoops(component, loops);
@@ -1849,27 +1879,22 @@
 		*/
 		effect(callback, { waitForVisible = true } = {}) {
 			const ref = {};
-			const scope = getEffectScope(this);
-			const effect = useEffect(() => {
-				if (scope?.disposed) return;
+			const scope = EffectScope.get(this);
+			const effect = useEffect(() => scope.run(() => {
 				if (!this.#mounted || waitForVisible && !this.#visible) {
 					this.#pendingEffects.add(ref);
 					return;
 				}
-				if (scope && !scope.isActive()) return;
-				runInEffectScope(this, scope, callback);
-			}, { weak: true });
+				if (!scope.isActive()) return;
+				callback();
+			}), { weak: true });
 			ref.effect = effect;
 			this.#effects.add(effect);
-			const dispose = () => {
+			return scope.addCleanup(() => {
 				effect.stop();
 				this.#effects.delete(effect);
 				this.#pendingEffects.delete(ref);
-				scope?.cleanups.delete(dispose);
-			};
-			if (scope?.disposed) dispose();
-			else scope?.cleanups.add(dispose);
-			return dispose;
+			});
 		}
 		/**
 		* Gets a slot definition.

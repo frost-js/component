@@ -1,6 +1,6 @@
 /** @import { default as Component } from './component.js'; */
 
-import { getEffectScope, runInEffectScope } from './effect-scope.js';
+import EffectScope from './effect-scope.js';
 import { createFunction, evaluator } from './evaluator.js';
 import { findPropertyOwner, isComponent, isEmpty, isPlainObject, skipSubtree } from './helpers.js';
 import { setInitialState } from './state.js';
@@ -324,7 +324,7 @@ function bindEvent(component, element, name, value) {
         element.addEventListener('elementchange', update);
     }
 
-    getEffectScope(component)?.cleanups.add(() => {
+    EffectScope.get(component).addCleanup(() => {
         target.removeEventListener(eventName, handler, options);
         element.removeEventListener('elementchange', update);
     });
@@ -433,7 +433,7 @@ function bindInput(component, element, name, value) {
             childList: select,
             subtree: select,
         });
-        getEffectScope(component)?.cleanups.add(() => observer.disconnect());
+        EffectScope.get(component).addCleanup(() => observer.disconnect());
     }
 };
 
@@ -474,17 +474,13 @@ function bindProperty(component, element, name, value) {
     };
 
     if (element.localName.includes('-') && !element.matches(':defined')) {
-        const scope = getEffectScope(component);
-        customElements.whenDefined(element.localName).then(() => {
-            if (scope?.disposed) {
-                return;
-            }
-
+        const scope = EffectScope.get(component);
+        customElements.whenDefined(element.localName).then(() => scope.run(() => {
             customElements.upgrade(element);
             if (element.matches(':defined')) {
-                runInEffectScope(component, scope, setup);
+                setup();
             }
-        });
+        }));
         return;
     }
 

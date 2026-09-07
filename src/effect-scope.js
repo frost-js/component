@@ -1,85 +1,121 @@
 /** @import { default as Component } from './component.js'; */
 
 /**
- * @typedef {object} EffectScope
- * @property {Set<() => void>} cleanups The effect and nested-scope cleanup callbacks.
- * @property {boolean} disposed Whether the scope has been stopped.
- * @property {() => boolean} isActive Whether this scope and its enclosing branch conditions match.
+ * Owns the execution context and cleanup callbacks for a group of bindings.
  */
+export default class EffectScope {
+    static #activeScopes = new WeakMap();
 
-const activeScopes = new WeakMap();
+    #cleanups = new Set();
+    #component;
+    #disposed = false;
+    #isActive;
 
-/**
- * Gets the active effect scope for a component.
- * @param {Component} component The component that owns the effects.
- * @returns {EffectScope|undefined} The active scope, if any.
- */
-export function getEffectScope(component) {
-    return activeScopes.get(component);
-};
+    /**
+     * Collects effects for a block, including nested scopes and effects created by later runs.
+     * @param {Component} component The component that owns the bindings.
+     * @param {() => void} callback The synchronous binding setup callback.
+     * @param {() => boolean} [isActive] The reactive condition that enables the block's effects.
+     * @returns {() => void} Stops and releases the collected effects.
+     */
+    static collect(component, callback, isActive) {
+        const parent = this.get(component);
+        const scope = new this(component, () => parent.isActive() && (!isActive || isActive()));
+        const dispose = parent.addCleanup(() => scope.dispose());
 
-/**
- * Runs a callback with its original effect scope, restoring the previous scope afterward.
- * @param {Component} component The component that owns the effects.
- * @param {EffectScope|undefined} scope The scope to activate.
- * @param {() => void} callback The synchronous callback to execute.
- */
-export function runInEffectScope(component, scope, callback) {
-    const previous = activeScopes.get(component);
-    if (scope) {
-        activeScopes.set(component, scope);
-    } else {
-        activeScopes.delete(component);
-    }
-
-    try {
-        callback();
-    } finally {
-        if (previous) {
-            activeScopes.set(component, previous);
-        } else {
-            activeScopes.delete(component);
+        try {
+            scope.run(callback);
+        } catch (error) {
+            dispose();
+            throw error;
         }
-    }
-};
 
-/**
- * Collects effects for a block, including nested scopes and effects created by later runs.
- * @param {Component} component The component that owns the bindings.
- * @param {() => void} callback The synchronous binding setup callback.
- * @param {() => boolean} [isActive] The reactive condition that enables the block's effects.
- * @returns {() => void} Stops and releases the collected effects.
- */
-export function collectEffects(component, callback, isActive) {
-    const parent = activeScopes.get(component);
-    const scope = {
-        cleanups: new Set(),
-        disposed: false,
-        isActive: () => (!parent || parent.isActive()) &&
-            (!isActive || isActive()),
-    };
-    const dispose = () => {
-        if (scope.disposed) {
+        return dispose;
+    }
+
+    /**
+     * Gets the active effect scope, creating a default scope for the component if needed.
+     * @param {Component} component The component that owns the effects.
+     * @returns {EffectScope} The current scope for the component.
+     */
+    static get(component) {
+        let scope = this.#activeScopes.get(component);
+        if (!scope) {
+            scope = new this(component);
+            this.#activeScopes.set(component, scope);
+        }
+
+        return scope;
+    }
+
+    /**
+     * Creates an effect scope.
+     * @param {Component} component The component that owns the bindings.
+     * @param {() => boolean} [isActive] Whether the scope's bindings should run.
+     */
+    constructor(component, isActive) {
+        this.#component = component;
+        this.#isActive = isActive;
+    }
+
+    /**
+     * Registers cleanup, running it immediately if the scope is already disposed.
+     * @param {() => void} cleanup The cleanup callback.
+     * @returns {() => void} Runs and unregisters the cleanup once.
+     */
+    addCleanup(cleanup) {
+        const dispose = () => {
+            if (this.#cleanups.delete(dispose)) {
+                cleanup();
+            }
+        };
+
+        this.#cleanups.add(dispose);
+        if (this.#disposed) {
+            dispose();
+        }
+
+        return dispose;
+    }
+
+    /**
+     * Stops the scope and releases its registered bindings and nested scopes.
+     */
+    dispose() {
+        if (this.#disposed) {
             return;
         }
 
-        scope.disposed = true;
-        for (const cleanup of scope.cleanups) {
+        this.#disposed = true;
+        for (const cleanup of this.#cleanups) {
             cleanup();
         }
-
-        scope.cleanups.clear();
-        parent?.cleanups.delete(dispose);
-    };
-
-    parent?.cleanups.add(dispose);
-
-    try {
-        runInEffectScope(component, scope, callback);
-    } catch (error) {
-        dispose();
-        throw error;
     }
 
-    return dispose;
-};
+    /**
+     * Checks whether the scope and its enclosing branch conditions match.
+     * @returns {boolean} Whether the scope's bindings should run.
+     */
+    isActive() {
+        return !this.#isActive || this.#isActive();
+    }
+
+    /**
+     * Runs a callback in this scope, restoring the previous scope afterward.
+     * @param {() => void} callback The synchronous callback to execute.
+     */
+    run(callback) {
+        if (this.#disposed) {
+            return;
+        }
+
+        const previous = this.constructor.get(this.#component);
+        this.constructor.#activeScopes.set(this.#component, this);
+
+        try {
+            callback();
+        } finally {
+            this.constructor.#activeScopes.set(this.#component, previous);
+        }
+    }
+}

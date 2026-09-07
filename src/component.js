@@ -3,7 +3,7 @@
 import { StateStore, useEffect } from '@fr0st/state';
 import { bind } from './bind.js';
 import { parseBlocks, processConditionals, processLoops } from './blocks.js';
-import { getEffectScope, runInEffectScope } from './effect-scope.js';
+import EffectScope from './effect-scope.js';
 import { parseElements } from './element.js';
 import { findChildren, findParent, isComponent, waitForChildren } from './helpers.js';
 import { getShadowAssets } from './shadow-assets.js';
@@ -276,42 +276,29 @@ export default class Component extends HTMLElement {
      */
     effect(callback, { waitForVisible = true } = {}) {
         const ref = {};
-        const scope = getEffectScope(this);
-        const effect = useEffect(() => {
-            if (scope?.disposed) {
-                return;
-            }
-
+        const scope = EffectScope.get(this);
+        const effect = useEffect(() => scope.run(() => {
             if (!this.#mounted || (waitForVisible && !this.#visible)) {
                 this.#pendingEffects.add(ref);
                 return;
             }
 
-            if (scope && !scope.isActive()) {
+            if (!scope.isActive()) {
                 return;
             }
 
-            runInEffectScope(this, scope, callback);
-        }, { weak: true });
+            callback();
+        }), { weak: true });
 
         ref.effect = effect;
 
         this.#effects.add(effect);
 
-        const dispose = () => {
+        return scope.addCleanup(() => {
             effect.stop();
             this.#effects.delete(effect);
             this.#pendingEffects.delete(ref);
-            scope?.cleanups.delete(dispose);
-        };
-
-        if (scope?.disposed) {
-            dispose();
-        } else {
-            scope?.cleanups.add(dispose);
-        }
-
-        return dispose;
+        });
     }
 
     /**

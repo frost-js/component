@@ -4,7 +4,7 @@ import { useState } from '@fr0st/state';
 import { bind } from './bind.js';
 import { parseBlocks, processConditionals, processLoops } from './blocks.js';
 import DOMRegion from './dom-region.js';
-import { collectEffects, getEffectScope } from './effect-scope.js';
+import EffectScope from './effect-scope.js';
 
 /**
  * @typedef {object} SlotDefinition
@@ -123,7 +123,7 @@ function createFallback(start, end) {
         }
 
         initialized = true;
-        getEffectScope(component)?.cleanups.add(() => observer?.disconnect());
+        EffectScope.get(component).addCleanup(() => observer?.disconnect());
         let bound = false;
 
         component.effect(() => {
@@ -135,7 +135,7 @@ function createFallback(start, end) {
             const [conditionals, loops] = parseBlocks(start);
 
             // Bindings may run before the assignment observer updates active.
-            collectEffects(component, () => {
+            EffectScope.collect(component, () => {
                 bind(component, start);
                 processConditionals(component, conditionals);
                 processLoops(component, loops);

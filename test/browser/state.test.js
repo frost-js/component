@@ -56,6 +56,31 @@ test.describe('Component state', () => {
         expect(name).toBe('Grace');
     });
 
+    for (const deferred of [false, true]) {
+        test(`disposes an effect with ${deferred ? 'visibility-deferred' : 'queued'} work without stopping other bindings`, async ({ page }) => {
+            await defineComponent(page, 'x-component', 'XComponent', '<div>{count}</div>');
+            await page.setContent('<x-component count="0"></x-component>');
+            await waitForComponent(page, 'x-component');
+
+            await page.evaluate((deferred) => {
+                const component = document.querySelector('[x\\:component="x-component"]').component;
+                component.dispatchEvent(new Event(deferred ? 'invisible' : 'visible'));
+                window._effectValues = [];
+
+                const dispose = component.effect(() => window._effectValues.push(component.state.count));
+                component.state.count = 1;
+                dispose();
+                dispose();
+                component.dispatchEvent(new Event('visible'));
+            }, deferred);
+
+            await expect(page.locator('[x\\:component="x-component"]')).toHaveText('1');
+            await updateState(page, 'x-component', { count: 2 });
+            await expect(page.locator('[x\\:component="x-component"]')).toHaveText('2');
+            expect(await page.evaluate(() => window._effectValues)).toEqual(deferred ? [] : [0]);
+        });
+    }
+
     test('falls back to string values when state parsing fails', async ({ page }) => {
         await defineComponent(page, 'x-component', 'XComponent', '<div></div>');
         await page.setContent('<x-component broken="{ invalid" ></x-component>');

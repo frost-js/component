@@ -2,7 +2,7 @@
 
 import { bind } from './bind.js';
 import DOMRegion from './dom-region.js';
-import { collectEffects } from './effect-scope.js';
+import EffectScope from './effect-scope.js';
 import { evaluator } from './evaluator.js';
 import { isComponent, skipSubtree } from './helpers.js';
 import { setInitialState } from './state.js';
@@ -196,7 +196,7 @@ export function processConditionals(component, conditionals) {
                     if (!condition.attached) {
                         const [nestedConditionals, nestedLoops] = parseBlocks(condition.element);
 
-                        collectEffects(component, () => {
+                        EffectScope.collect(component, () => {
                             bind(component, condition.element);
                             processConditionals(component, nestedConditionals);
                             processLoops(component, nestedLoops);
@@ -269,7 +269,7 @@ export function processLoops(component, loops) {
 
                     const [nestedConditionals, nestedLoops] = parseBlocks(loopComponent);
 
-                    const dispose = collectEffects(component, () => {
+                    const dispose = EffectScope.collect(component, () => {
                         bind(component, loopComponent);
                         processConditionals(component, nestedConditionals);
                         processLoops(component, nestedLoops);
