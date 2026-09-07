@@ -56,6 +56,35 @@ function parseShadowMode(container) {
 }
 
 /**
+ * Loads a configured script or stylesheet, sharing pending and completed loads.
+ * @param {HTMLScriptElement|HTMLLinkElement} element The resource element to load.
+ * @returns {Promise<void>} A promise that resolves once the resource has loaded.
+ */
+function loadResource(element) {
+    const isScript = element.localName === 'script';
+    const cache = isScript ? loadedScripts : loadedStylesheets;
+    const url = isScript ? element.src : element.href;
+
+    if (cache.has(url)) {
+        return cache.get(url);
+    }
+
+    const promise = new Promise((resolve, reject) => {
+        element.onload = () => resolve();
+        element.onerror = () => {
+            element.remove();
+            cache.delete(url);
+            reject(new Error(`Failed to load ${isScript ? 'script' : 'stylesheet'} "${url}"`));
+        };
+    });
+
+    cache.set(url, promise);
+    document.head.appendChild(element);
+
+    return promise;
+};
+
+/**
  * Defines a component class from its HTML template.
  * @param {string} tagName The custom element tag name.
  * @param {string} html The HTML template string.
@@ -102,27 +131,13 @@ function define(tagName, html, templateUrl) {
         }
 
         const src = new URL(source, templateUrl).href;
+        const script = document.createElement('script');
 
-        if (!loadedScripts.has(src)) {
-            const script = document.createElement('script');
+        script.setAttribute('src', src);
+        script.setAttribute('type', 'text/javascript');
+        script.async = false;
 
-            script.setAttribute('src', src);
-            script.setAttribute('type', 'text/javascript');
-            script.async = false;
-
-            loadedScripts.set(src, new Promise((resolve, reject) => {
-                script.onload = () => resolve();
-                script.onerror = () => {
-                    script.remove();
-                    loadedScripts.delete(src);
-                    reject(new Error(`Failed to load script "${src}"`));
-                };
-            }));
-
-            document.head.appendChild(script);
-        }
-
-        promises.push(loadedScripts.get(src));
+        promises.push(loadResource(script));
     }
 
     // load stylesheets/style blocks
@@ -140,20 +155,7 @@ function define(tagName, html, templateUrl) {
             continue;
         }
 
-        if (!loadedStylesheets.has(href)) {
-            loadedStylesheets.set(href, new Promise((resolve, reject) => {
-                stylesheet.onload = () => resolve();
-                stylesheet.onerror = () => {
-                    stylesheet.remove();
-                    loadedStylesheets.delete(href);
-                    reject(new Error(`Failed to load stylesheet "${href}"`));
-                };
-            }));
-
-            document.head.appendChild(stylesheet);
-        }
-
-        promises.push(loadedStylesheets.get(href));
+        promises.push(loadResource(stylesheet));
     }
 
     if (!componentShadowMode) {
