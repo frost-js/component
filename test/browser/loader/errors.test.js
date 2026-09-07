@@ -6,6 +6,25 @@ test.describe('Component autoload', () => {
         await initializePage(page);
     });
 
+    for (const shadowMode of [null, 'open', 'closed']) {
+        for (const directive of ['x:if', 'x:else-if', 'x:else', 'x:each']) {
+            test(`rejects ${directive} directly on autoloaded slots in ${shadowMode || 'light'} mode`, async ({ page }) => {
+                await page.route('**/components/x-bad', (route) => route.fulfill({
+                    contentType: 'text/html',
+                    body: `${shadowMode ? `<!-- shadow:${shadowMode} -->` : ''}<div><slot ${directive}="items"></slot></div>`,
+                }));
+
+                const errorPromise = page.waitForEvent('pageerror');
+                await page.evaluate(() => {
+                    window.Component.bootstrap({ baseUrl: 'http://test.local/components' });
+                    document.body.innerHTML = '<x-bad></x-bad>';
+                });
+                const error = await errorPromise;
+                expect(error.message).toContain('Slot elements cannot have conditional or loop directives');
+            });
+        }
+    }
+
     test('throws when autoloaded template has multiple root elements', async ({ page }) => {
         await page.route('**/components/*', async (route) => {
             const url = route.request().url();

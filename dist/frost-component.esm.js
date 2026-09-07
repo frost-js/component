@@ -382,6 +382,17 @@ var booleanAttributes = /* @__PURE__ */ new Set([
 	"shadowrootdelegatesfocus",
 	"shadowrootserializable"
 ]);
+/** Events dispatched on the component instance rather than its rendered element. */
+var componentEvents = /* @__PURE__ */ new Set([
+	"connected",
+	"dismounted",
+	"elementchange",
+	"initialized",
+	"invisible",
+	"loaded",
+	"mounted",
+	"visible"
+]);
 /** @type {WeakSet<Text>} */
 var boundTextNodes = /* @__PURE__ */ new WeakSet();
 /**
@@ -529,18 +540,19 @@ function bindEvent(component, element, name, value) {
 		capture: params.includes("capture"),
 		passive: params.includes("passive")
 	};
-	const attach = (target) => {
-		target.addEventListener(eventName, handler, options);
-		if (isComponent(target.localName) && !target.initialized) target.addEventListener("initialized", () => {
-			if (once && ran) return;
-			const root = target.element;
-			if (root !== target) {
-				target.removeEventListener(eventName, handler, options);
-				attach(root);
-			}
-		}, { once: true });
+	const followElement = isComponent(element.localName) && !componentEvents.has(eventName);
+	let target = followElement && element.initialized ? element.element : element;
+	const update = ({ detail }) => {
+		target.removeEventListener(eventName, handler, options);
+		target = detail.element;
+		if (!once || !ran) target.addEventListener(eventName, handler, options);
 	};
-	attach(element);
+	target.addEventListener(eventName, handler, options);
+	if (followElement) element.addEventListener("elementchange", update);
+	getEffectScope(component)?.cleanups.add(() => {
+		target.removeEventListener(eventName, handler, options);
+		element.removeEventListener("elementchange", update);
+	});
 }
 /**
 * Binds an input element to component state.
@@ -1147,6 +1159,7 @@ var Component = class extends HTMLElement {
 	static shadowMode = null;
 	#connected = false;
 	#effects = /* @__PURE__ */ new Set();
+	#element = this;
 	#initialized = false;
 	#loaded = false;
 	#loadedGates = /* @__PURE__ */ new Set();
@@ -1166,12 +1179,14 @@ var Component = class extends HTMLElement {
 	}
 	/**
 	* Creates a new component instance.
+	* @throws {Error} When a slot has conditional or loop directives.
 	*/
 	constructor() {
 		super();
 		if (!isComponent(this.localName)) throw new Error("Components must begin with \"x-\"");
 		this.#shadowRoot = this.constructor.shadowMode ? this.attachShadow({ mode: this.constructor.shadowMode }) : null;
 		this.#rootElement = this.render();
+		if (this.#rootElement.querySelector("slot:is([x\\:if], [x\\:else-if], [x\\:else], [x\\:each])")) throw new Error("Slot elements cannot have conditional or loop directives");
 		this.#rootElement.component = this;
 		this.#rootElement.setAttribute("x:component", this.localName);
 		for (const [key, element] of parseElements(this.#rootElement)) {
@@ -1205,14 +1220,11 @@ var Component = class extends HTMLElement {
 		return this.#connected;
 	}
 	/**
-	* Gets the element rendered by the component.
-	* @returns {Element} The rendered element, or the host element in shadow mode.
+	* Gets the component's current public DOM element.
+	* @returns {Element} The host until replacement, or permanently in shadow mode.
 	*/
 	get element() {
-		if (this.#shadowRoot) return this;
-		let element = this.#rootElement;
-		while (isComponent(element.localName) && element.rootElement && element.renderRoot === element.rootElement) element = element.rootElement;
-		return element;
+		return this.#element;
 	}
 	/**
 	* Determines whether the component is initialized.
@@ -1385,7 +1397,6 @@ var Component = class extends HTMLElement {
 	* Renders the component element.
 	* @returns {Element} The rendered root element.
 	* @throws {Error} When the template does not render exactly one non-slot root element.
-	* @throws {Error} When a slot has conditional or loop directives.
 	*/
 	render() {
 		const fragment = document.createRange().createContextualFragment(this.constructor.template);
@@ -1401,7 +1412,6 @@ var Component = class extends HTMLElement {
 		}
 		if (fragment.childElementCount !== 1) throw new Error("Components must only render a single element");
 		if (fragment.firstElementChild.matches("slot")) throw new Error("Components cannot render a root slot element");
-		if (fragment.querySelector("slot:is([x\\:if], [x\\:else-if], [x\\:else], [x\\:each])")) throw new Error("Slot elements cannot have conditional or loop directives");
 		return fragment.firstElementChild;
 	}
 	/**
@@ -1443,6 +1453,7 @@ var Component = class extends HTMLElement {
 			if (slot !== null) this.#rootElement.setAttribute("slot", slot);
 			this.parentNode.insertBefore(this.#rootElement, this);
 			this.remove();
+			this.#setElement(this.#rootElement);
 		}
 		this.#initialized = true;
 		this.#mounted = true;
@@ -1458,6 +1469,21 @@ var Component = class extends HTMLElement {
 			const event = new Event("loaded");
 			this.dispatchEvent(event);
 		});
+	}
+	/**
+	* Updates the public element and notifies owners and bindings after replacement.
+	* @param {Element} element The new public DOM element.
+	*/
+	#setElement(element) {
+		if (element === this.#element) return;
+		const previous = this.#element;
+		this.#element = element;
+		const owner = this.component;
+		if (owner && !owner.#shadowRoot) owner.#setElement(element);
+		this.dispatchEvent(new CustomEvent("elementchange", { detail: {
+			element,
+			previous
+		} }));
 	}
 	/**
 	* Waits for child components and deferred loading promises, including any added while waiting.

@@ -441,7 +441,7 @@ You can call `Component.bootstrap()` more than once. Omitted options keep the cu
 ### Instance properties
 
 - `component.state`: the component's reactive `StateStore`
-- `component.element`: the component's public DOM node and dispatch surface; the host element in shadow mode, otherwise the final rendered element exposed outside nested light-DOM wrappers
+- `component.element`: the component's current public DOM node and dispatch surface; the host until replacement, then the current rendered element through nested light-DOM roots. Shadow components always expose their host.
 - `component.rootElement`: the root element returned by `render()`
 - `component.renderRoot`: the container that holds rendered output; a `ShadowRoot` in shadow mode, otherwise `rootElement`
 - `component.parentComponent`: the owning parent component instance, if any
@@ -465,6 +465,8 @@ You can call `Component.bootstrap()` more than once. Omitted options keep the cu
 ### Lifecycle
 
 On the initial connection, `onConnected()` runs before the `connected` event. State is then parsed and the rendered root is placed in the DOM before `initialize()` runs. Bindings and blocks are activated next, followed by the `initialized` event. The `loaded` event follows once child components and any `deferLoad()` promises have settled.
+
+When a light-DOM host is replaced, the component emits a non-bubbling `elementchange` event with `{ element, previous }` in `event.detail`. Listen on the component instance. Its `element` property is already updated when the event fires, including when a nested component root is replaced later. DOM event bindings follow these changes automatically; lifecycle event bindings stay on the component instance.
 
 Shadow components call `onConnected()` again when reconnected, without repeating initialization. The `mounted`, `dismounted`, `visible`, and `invisible` events come from the DOM observers installed by `Component.bootstrap()` and are separate from initialization.
 

@@ -19,6 +19,7 @@ export default class Component extends HTMLElement {
 
     #connected = false;
     #effects = new Set();
+    #element = this;
     #initialized = false;
     #loaded = false;
     #loadedGates = new Set();
@@ -40,6 +41,7 @@ export default class Component extends HTMLElement {
 
     /**
      * Creates a new component instance.
+     * @throws {Error} When a slot has conditional or loop directives.
      */
     constructor() {
         super();
@@ -55,6 +57,11 @@ export default class Component extends HTMLElement {
             null;
 
         this.#rootElement = this.render();
+
+        if (this.#rootElement.querySelector('slot:is([x\\:if], [x\\:else-if], [x\\:else], [x\\:each])')) {
+            throw new Error('Slot elements cannot have conditional or loop directives');
+        }
+
         this.#rootElement.component = this;
         this.#rootElement.setAttribute('x:component', this.localName);
 
@@ -105,20 +112,11 @@ export default class Component extends HTMLElement {
     }
 
     /**
-     * Gets the element rendered by the component.
-     * @returns {Element} The rendered element, or the host element in shadow mode.
+     * Gets the component's current public DOM element.
+     * @returns {Element} The host until replacement, or permanently in shadow mode.
      */
     get element() {
-        if (this.#shadowRoot) {
-            return this;
-        }
-
-        let element = this.#rootElement;
-        while (isComponent(element.localName) && element.rootElement && element.renderRoot === element.rootElement) {
-            element = element.rootElement;
-        }
-
-        return element;
+        return this.#element;
     }
 
     /**
@@ -356,7 +354,6 @@ export default class Component extends HTMLElement {
      * Renders the component element.
      * @returns {Element} The rendered root element.
      * @throws {Error} When the template does not render exactly one non-slot root element.
-     * @throws {Error} When a slot has conditional or loop directives.
      */
     render() {
         const fragment = document.createRange()
@@ -388,10 +385,6 @@ export default class Component extends HTMLElement {
 
         if (fragment.firstElementChild.matches('slot')) {
             throw new Error('Components cannot render a root slot element');
-        }
-
-        if (fragment.querySelector('slot:is([x\\:if], [x\\:else-if], [x\\:else], [x\\:each])')) {
-            throw new Error('Slot elements cannot have conditional or loop directives');
         }
 
         return fragment.firstElementChild;
@@ -457,6 +450,7 @@ export default class Component extends HTMLElement {
             // replace element
             this.parentNode.insertBefore(this.#rootElement, this);
             this.remove();
+            this.#setElement(this.#rootElement);
         }
 
         this.#initialized = true;
@@ -480,6 +474,29 @@ export default class Component extends HTMLElement {
             const event = new Event('loaded');
             this.dispatchEvent(event);
         });
+    }
+
+    /**
+     * Updates the public element and notifies owners and bindings after replacement.
+     * @param {Element} element The new public DOM element.
+     */
+    #setElement(element) {
+        if (element === this.#element) {
+            return;
+        }
+
+        const previous = this.#element;
+        this.#element = element;
+
+        // Shadow owners keep their host even when their template root changes.
+        const owner = this.component;
+        if (owner && !owner.#shadowRoot) {
+            owner.#setElement(element);
+        }
+
+        this.dispatchEvent(new CustomEvent('elementchange', {
+            detail: { element, previous },
+        }));
     }
 
     /**

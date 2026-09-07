@@ -296,6 +296,78 @@ test.describe('Component lifecycle', () => {
         expect(events).toEqual(['parent:initialized', 'child:initialized', 'child:loaded', 'parent:loaded']);
     });
 
+    test('tracks the current public element through late-defined component roots', async ({ page }) => {
+        await defineComponent(page, 'x-wrapper', 'XWrapper', '<x-middle></x-middle>');
+        await page.evaluate(() => {
+            window._wrapper = document.createElement('x-wrapper');
+            window._changes = [];
+            window._beforeConnection = window._wrapper.element === window._wrapper;
+            window._wrapper.addEventListener('elementchange', (event) => {
+                const { element, previous } = event.detail;
+                window._changes.push({
+                    previous: previous.localName,
+                    current: element.localName,
+                    matches: window._wrapper.element === element,
+                    connected: element.isConnected,
+                    bubbles: event.bubbles,
+                });
+            });
+            document.body.appendChild(window._wrapper);
+        });
+        await page.waitForFunction(() => window._wrapper.initialized);
+        expect(await page.evaluate(() => window._beforeConnection)).toBe(true);
+        expect(await page.evaluate(() => window._wrapper.element.localName)).toBe('x-middle');
+
+        await defineComponent(page, 'x-middle', 'XMiddle', '<x-leaf></x-leaf>');
+        await page.waitForFunction(() => window._wrapper.rootElement.initialized);
+        expect(await page.evaluate(() => window._wrapper.element.localName)).toBe('x-leaf');
+
+        await defineComponent(page, 'x-leaf', 'XLeaf', '<button>Save</button>');
+        await page.waitForFunction(() => window._wrapper.loaded);
+        expect(await page.evaluate(() => window._changes)).toEqual([
+            { previous: 'x-wrapper', current: 'x-middle', matches: true, connected: true, bubbles: false },
+            { previous: 'x-middle', current: 'x-leaf', matches: true, connected: true, bubbles: false },
+            { previous: 'x-leaf', current: 'button', matches: true, connected: true, bubbles: false },
+        ]);
+
+        await page.evaluate(() => {
+            const element = window._wrapper.element;
+            element.remove();
+            document.body.appendChild(element);
+        });
+        await flushTasks(page);
+        expect(await page.evaluate(() => window._changes.length)).toBe(3);
+        expect(await page.evaluate(() => window._wrapper.element === document.querySelector('button'))).toBe(true);
+    });
+
+    for (const shadowMode of ['open', 'closed']) {
+        test(`stops root-change propagation at a ${shadowMode} shadow host`, async ({ page }) => {
+            await defineComponent(page, 'x-boundary', 'XBoundary', '<x-leaf></x-leaf>');
+            await defineComponent(page, 'x-wrapper', 'XWrapper', '<x-boundary></x-boundary>');
+            await page.evaluate((shadowMode) => {
+                window.XBoundary.shadowMode = shadowMode;
+                window._wrapper = document.createElement('x-wrapper');
+                window._boundary = window._wrapper.rootElement;
+                window._wrapperChanges = 0;
+                window._boundaryChanges = 0;
+                window._wrapper.addEventListener('elementchange', () => window._wrapperChanges++);
+                window._boundary.addEventListener('elementchange', () => window._boundaryChanges++);
+                document.body.appendChild(window._wrapper);
+            }, shadowMode);
+            await page.waitForFunction(() => window._boundary.initialized);
+            await defineComponent(page, 'x-leaf', 'XLeaf', '<button>Save</button>');
+            await page.waitForFunction(() => window._wrapper.loaded);
+
+            expect(await page.evaluate(() => ({
+                wrapperIsHost: window._wrapper.element === window._boundary,
+                boundaryIsHost: window._boundary.element === window._boundary,
+                leafIsButton: window._boundary.rootElement.element.localName === 'button',
+                wrapperChanges: window._wrapperChanges,
+                boundaryChanges: window._boundaryChanges,
+            }))).toEqual({ wrapperIsHost: true, boundaryIsHost: true, leafIsButton: true, wrapperChanges: 1, boundaryChanges: 0 });
+        });
+    }
+
     test('loads when a pending conditional child is removed before initialization', async ({ page }) => {
         await defineComponent(page, 'x-child', 'XChild', '<div></div>');
         await defineComponent(page, 'x-parent', 'XParent', '<div><x-child x:if="show"></x-child></div>');

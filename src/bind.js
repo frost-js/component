@@ -42,6 +42,18 @@ const booleanAttributes = new Set([
     'shadowrootserializable',
 ]);
 
+/** Events dispatched on the component instance rather than its rendered element. */
+const componentEvents = new Set([
+    'connected',
+    'dismounted',
+    'elementchange',
+    'initialized',
+    'invisible',
+    'loaded',
+    'mounted',
+    'visible',
+]);
+
 /** @type {WeakSet<Text>} */
 const boundTextNodes = new WeakSet();
 
@@ -295,25 +307,27 @@ function bindEvent(component, element, name, value) {
         passive: params.includes('passive'),
     };
 
-    const attach = (target) => {
-        target.addEventListener(eventName, handler, options);
+    const followElement = isComponent(element.localName) && !componentEvents.has(eventName);
+    let target = followElement && element.initialized ? element.element : element;
+    const update = ({ detail }) => {
+        target.removeEventListener(eventName, handler, options);
+        target = detail.element;
 
-        if (isComponent(target.localName) && !target.initialized) {
-            target.addEventListener('initialized', () => {
-                if (once && ran) {
-                    return;
-                }
-
-                const root = target.element;
-                if (root !== target) {
-                    target.removeEventListener(eventName, handler, options);
-                    attach(root);
-                }
-            }, { once: true });
+        if (!once || !ran) {
+            target.addEventListener(eventName, handler, options);
         }
     };
 
-    attach(element);
+    target.addEventListener(eventName, handler, options);
+
+    if (followElement) {
+        element.addEventListener('elementchange', update);
+    }
+
+    getEffectScope(component)?.cleanups.add(() => {
+        target.removeEventListener(eventName, handler, options);
+        element.removeEventListener('elementchange', update);
+    });
 };
 
 /**

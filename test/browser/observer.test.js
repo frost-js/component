@@ -333,8 +333,8 @@ test.describe('Component observers', () => {
 
         await page.waitForFunction(() => document.querySelector('#leaf')?.component?.loaded === true);
         expect(await page.evaluate(() => window._mountEvents)).toEqual([
-            'child:mounted',
             'parent:mounted',
+            'child:mounted',
         ]);
 
         await page.evaluate(() => {

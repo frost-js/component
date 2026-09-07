@@ -376,6 +376,75 @@ test.describe('Component event bindings', () => {
         expect(await page.evaluate(() => window._parent.state.calls)).toBe(1);
     });
 
+    for (const once of [false, true]) {
+        test(`keeps ${once ? 'once' : 'regular'} handlers across a late-defined child's connection and initialization`, async ({ page }) => {
+            await defineComponent(page, 'x-parent', 'XParent', `<div><x-child @save${once ? '.once' : ''}="{ this.state.phases = [...this.state.phases, event.detail.phase]; }"></x-child></div>`);
+            await page.setContent('<x-parent phases="[]"></x-parent>');
+            await page.waitForFunction(() => document.querySelector('[x\\:component="x-parent"]')?.component.initialized);
+            await page.evaluate(() => {
+                class XChild extends window.Component {
+                    static get template() {
+                        return '<button @click="{ this.dispatch(\'save\', { phase: \'click\' }) }">Save</button>';
+                    }
+
+                    initialize() {
+                        this.dispatch('save', { phase: 'initialize' });
+                    }
+
+                    onConnected() {
+                        this.dispatch('save', { phase: 'connected' });
+                    }
+                }
+
+                customElements.define('x-child', XChild);
+            });
+            await waitForComponent(page, 'x-parent');
+            await page.getByRole('button').click();
+
+            expect(await page.evaluate(() => document.querySelector('[x\\:component="x-parent"]').component.state.phases))
+                .toEqual(once ? ['connected'] : ['connected', 'initialize', 'click']);
+        });
+    }
+
+    test('keeps lifecycle event bindings on the component instance after root replacement', async ({ page }) => {
+        await defineComponent(page, 'x-child', 'XChild', '<button>Save</button>');
+        await defineComponent(page, 'x-parent', 'XParent', '<div><x-child @connected="recordEvent" @elementchange="recordEvent" @initialized="recordEvent" @loaded="recordEvent"></x-child></div>');
+        await attachMethod(page, 'XParent', 'recordEvent', function(event) {
+            window._lifecycle.push([event.type, event.currentTarget.localName]);
+        });
+        await page.evaluate(() => window._lifecycle = []);
+        await page.setContent('<x-parent></x-parent>');
+        await waitForComponent(page, 'x-parent');
+
+        expect(await page.evaluate(() => window._lifecycle)).toEqual([
+            ['connected', 'x-child'],
+            ['elementchange', 'x-child'],
+            ['initialized', 'x-child'],
+            ['loaded', 'x-child'],
+        ]);
+    });
+
+    test('cleans up event handlers and root-change subscriptions when a loop row is removed', async ({ page }) => {
+        await defineComponent(page, 'x-row', 'XRow', '<x-late></x-late>');
+        await defineComponent(page, 'x-parent', 'XParent', '<div><x-row x:each="items" @save="{ this.state.calls++; }"></x-row></div>');
+        await page.setContent('<x-parent items="[{ id: 1 }]" calls="0"></x-parent>');
+        await page.waitForFunction(() => document.querySelector('x-late')?.component?.initialized);
+        await page.evaluate(() => {
+            window._parent = document.querySelector('[x\\:component="x-parent"]').component;
+            window._late = document.querySelector('x-late');
+            window._parent.state.items = [];
+        });
+        await expect(page.locator('x-late')).toHaveCount(0);
+        await page.evaluate(() => {
+            window._late.dispatchEvent(new Event('save'));
+            document.body.appendChild(window._late);
+        });
+        await defineComponent(page, 'x-late', 'XLate', '<button @click="{ this.dispatch(\'save\') }">Save</button>');
+        await page.waitForFunction(() => window._late.loaded);
+        await page.getByRole('button').click();
+        expect(await page.evaluate(() => window._parent.state.calls)).toBe(0);
+    });
+
     test('binds bubbled custom events on child component hosts', async ({ page }) => {
         await defineComponent(page, 'x-item', 'XItem', '<button id="remove" @click="{ this.dispatch(\'remove\') }">remove</button>');
         await defineComponent(page, 'x-list', 'XList', '<ul><slot></slot></ul>');
