@@ -25,7 +25,7 @@ import { setInitialState } from './state.js';
 
 /**
  * Parses top-level conditional and loop blocks from an element subtree.
- * @param {Element|Comment} element The root element or fallback start marker to parse.
+ * @param {Element|DocumentFragment|Comment} element The root element, template content, or fallback start marker to parse.
  * @param {ConditionalCase[][]} [conditionals=[]] The collected conditional blocks.
  * @param {LoopBlock[]} [loops=[]] The collected loop blocks.
  * @returns {[ConditionalCase[][], LoopBlock[]]} The collected conditionals and loops.

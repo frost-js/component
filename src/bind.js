@@ -1,5 +1,6 @@
 /** @import { default as Component } from './component.js'; */
 
+import { parseBlocks, processConditionals, processLoops } from './blocks.js';
 import EffectScope from './effect-scope.js';
 import { createFunction, evaluator } from './evaluator.js';
 import { findPropertyOwner, isComponent, isEmpty, isPlainObject, skipSubtree } from './helpers.js';
@@ -57,10 +58,13 @@ const componentEvents = new Set([
 /** @type {WeakSet<Text>} */
 const boundTextNodes = new WeakSet();
 
+/** @type {WeakMap<HTMLTemplateElement, { component: Component, scope: EffectScope }>} */
+const templateBindings = new WeakMap();
+
 /**
  * Binds an element subtree to a component.
  * @param {Component} component The component that owns bindings.
- * @param {Element|Comment} element The root element or fallback start marker to bind.
+ * @param {Element|DocumentFragment|Comment} element The root element, template content, or fallback start marker to bind.
  */
 export function bind(component, element) {
     if (element.component && element.component !== component) {
@@ -98,6 +102,11 @@ export function bind(component, element) {
             }
 
             bindElement(node);
+
+            // Inert template content must keep its declaring scope when rendered later.
+            if (node instanceof HTMLTemplateElement && !templateBindings.has(node)) {
+                templateBindings.set(node, { component, scope: EffectScope.get(component) });
+            }
         } else if (node.nodeType === Node.TEXT_NODE) {
             bindText(component, node);
         } else if (node.fallback) {
@@ -107,6 +116,31 @@ export function bind(component, element) {
 
         node = walker.nextNode();
     }
+};
+
+/**
+ * Renders a template using the component and effect scope that declared it.
+ * @param {Component} component The component to use when the template has no binding owner.
+ * @param {HTMLTemplateElement} template The template to render.
+ * @returns {() => void} Stops the rendered template's bindings.
+ */
+export function bindTemplate(component, template) {
+    const binding = templateBindings.get(template) || { component, scope: EffectScope.get(component) };
+    const fragment = template.content.cloneNode(true);
+    let dispose = () => { };
+
+    binding.scope.run(() => {
+        const [conditionals, loops] = parseBlocks(fragment);
+
+        dispose = EffectScope.collect(binding.component, () => {
+            bind(binding.component, fragment);
+            processConditionals(binding.component, conditionals);
+            processLoops(binding.component, loops);
+        });
+    });
+
+    template.replaceWith(fragment);
+    return dispose;
 };
 
 /**

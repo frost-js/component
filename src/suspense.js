@@ -1,3 +1,4 @@
+import { bindTemplate } from './bind.js';
 import Component from './component.js';
 import { waitForChildren } from './helpers.js';
 
@@ -28,11 +29,14 @@ export default class Suspense extends Component {
     initialize() {
         super.initialize();
 
-        for (const template of [...this.fallback.querySelectorAll('template')]) {
-            template.replaceWith(template.content.cloneNode(true));
-        }
+        const disposals = [...this.fallback.querySelectorAll('template')]
+            .map((template) => bindTemplate(this, template));
 
         waitForChildren(this, this.content).then(() => {
+            for (const dispose of disposals) {
+                dispose();
+            }
+
             if (!this.rootElement.parentNode) {
                 return;
             }
@@ -41,6 +45,7 @@ export default class Suspense extends Component {
             for (const node of nodes) {
                 this.rootElement.parentNode.insertBefore(node, this.rootElement);
             }
+
             this.rootElement.remove();
         });
     }

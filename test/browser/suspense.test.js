@@ -46,6 +46,77 @@ test.describe('Suspense component', () => {
         await expect(page.locator('#child')).toHaveText('ready');
     });
 
+    for (const forwarded of [false, true]) {
+        test(`keeps ${forwarded ? 'forwarded' : 'direct'} fallback template bindings in their declaring scope`, async ({ page }) => {
+            const errors = [];
+            page.on('pageerror', (error) => errors.push(error.message));
+            await defineComponent(page, 'x-delay', 'XDelay', '<div id="child">ready</div>');
+            await attachMethod(page, 'XDelay', 'initialize', function() {
+                this.deferLoad(new Promise((resolve) => {
+                    window._resolveLoad = resolve;
+                }));
+            });
+            await defineComponent(page, 'x-shell', 'XShell', '<section><slot></slot></section>');
+            await defineComponent(page, 'x-parent', 'XParent', `
+                <div>
+                    <section x:if="show">
+                        ${forwarded ? '<x-shell>' : ''}
+                        <x-suspense>
+                            <template slot="fallback">
+                                <span id="label">{label}</span>
+                                <em id="details" x:if="details">{label}</em>
+                                <span id="user">{{ this.state.user.name }}</span>
+                                <button id="cancel" @click="cancel">Cancel</button>
+                            </template>
+                            <x-delay></x-delay>
+                        </x-suspense>
+                        ${forwarded ? '</x-shell>' : ''}
+                    </section>
+                </div>
+            `);
+            await attachMethod(page, 'XParent', 'cancel', function() {
+                this.state.calls++;
+            });
+            await page.evaluate(() => {
+                window.Component.bootstrap();
+                window._parent = document.createElement('x-parent');
+                window._parent.state.set({ show: true, label: 'Initial', user: { name: 'Ada' }, calls: 0 });
+                document.body.appendChild(window._parent);
+            });
+
+            await expect(page.locator('#label')).toHaveText('Initial');
+            await expect(page.locator('#details')).toHaveCount(0);
+            await expect(page.locator('#user')).toHaveText('Ada');
+            await page.evaluate(() => window._parent.state.set({ label: 'Updated', details: true }));
+            await expect(page.locator('#label')).toHaveText('Updated');
+            await expect(page.locator('#details')).toHaveText('Updated');
+            await page.locator('#cancel').click();
+            expect(await page.evaluate(() => window._parent.state.calls)).toBe(1);
+
+            await page.evaluate(() => window._parent.state.set({ show: false, user: null }));
+            await expect(page.locator('#cancel')).toHaveCount(0);
+            await flushTasks(page);
+            expect(errors).toEqual([]);
+            await page.evaluate(() => window._parent.state.set({ user: { name: 'Grace' }, show: true }));
+            await expect(page.locator('#user')).toHaveText('Grace');
+
+            await page.evaluate(() => {
+                window._cancel = document.querySelector('#cancel');
+                window._resolveLoad();
+            });
+            await waitForComponent(page, 'x-parent');
+            await expect(page.locator('#cancel')).toHaveCount(0);
+            await expect(page.locator('#child')).toBeVisible();
+            await page.evaluate(() => {
+                window._parent.state.user = null;
+                window._cancel.click();
+            });
+            await flushTasks(page);
+            expect(await page.evaluate(() => window._parent.state.calls)).toBe(1);
+            expect(errors).toEqual([]);
+        });
+    }
+
     test('keeps unwrapped content inside its conditional branch', async ({ page }) => {
         const errors = [];
         page.on('pageerror', (error) => errors.push(error.message));
