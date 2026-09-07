@@ -736,14 +736,68 @@ function bindText(component, node) {
 }
 
 //#endregion
+//#region src/dom-region.js
+/**
+* Keeps a group of DOM nodes between stable comment markers.
+*/
+var DOMRegion = class {
+	#fragment;
+	/**
+	* Creates a region without moving its content.
+	* @param {Comment} start The start marker.
+	* @param {Comment} end The end marker.
+	*/
+	constructor(start, end) {
+		this.start = start;
+		this.end = end;
+	}
+	/**
+	* Detaches the content while leaving the markers in place.
+	*/
+	hide() {
+		this.#fragment ??= document.createDocumentFragment();
+		while (this.start.nextSibling !== this.end) this.#fragment.appendChild(this.start.nextSibling);
+	}
+	/**
+	* Moves the whole region, including its markers, before a sibling.
+	* @param {Node} node The node to insert before.
+	*/
+	moveBefore(node) {
+		if (node === this.start || this.end.nextSibling === node) return;
+		node.before(this.#getRange().extractContents());
+	}
+	/**
+	* Removes the whole region, including its markers.
+	*/
+	remove() {
+		this.#getRange().deleteContents();
+	}
+	/**
+	* Restores hidden content without moving content that is already shown.
+	*/
+	show() {
+		if (this.#fragment?.hasChildNodes()) this.end.before(this.#fragment);
+	}
+	/**
+	* Gets a range covering the current content and both markers.
+	* @returns {Range} The region's current DOM range.
+	*/
+	#getRange() {
+		const range = document.createRange();
+		range.setStartBefore(this.start);
+		range.setEndAfter(this.end);
+		return range;
+	}
+};
+
+//#endregion
 //#region src/blocks.js
 /** @import { default as Component } from './component.js'; */
 /**
 * @typedef {object} ConditionalCase
 * @property {string} condition The condition expression for the case.
 * @property {Element} element The template element for the case.
-* @property {Comment} start The start marker for the case.
-* @property {Comment} end The end marker for the case.
+* @property {DOMRegion} region The case's DOM boundaries and retained content.
 */
 /**
 * @typedef {object} LoopBlock
@@ -796,8 +850,8 @@ function parseConditional(element) {
 	element.removeAttribute("x:if");
 	const start = document.createComment(`if[${condition}]`);
 	const end = document.createComment(`/if[${condition}]`);
-	element.parentNode.insertBefore(start, element);
-	element.parentNode.insertBefore(end, element);
+	element.before(start);
+	element.after(end);
 	const cases = [];
 	cases.push({
 		condition,
@@ -812,8 +866,8 @@ function parseConditional(element) {
 			next.removeAttribute("x:else-if");
 			const start = document.createComment(`else-if[${condition}]`);
 			const end = document.createComment(`/else-if[${condition}]`);
-			next.parentNode.insertBefore(start, next);
-			next.parentNode.insertBefore(end, next);
+			next.before(start);
+			next.after(end);
 			cases.push({
 				condition,
 				element: next,
@@ -826,8 +880,8 @@ function parseConditional(element) {
 			next.removeAttribute("x:else");
 			const start = document.createComment(`else`);
 			const end = document.createComment(`/else`);
-			next.parentNode.insertBefore(start, next);
-			next.parentNode.insertBefore(end, next);
+			next.before(start);
+			next.after(end);
 			cases.push({
 				condition: "{true}",
 				element: next,
@@ -837,12 +891,17 @@ function parseConditional(element) {
 		}
 		break;
 	}
-	for (const { element, start, end } of cases) {
+	return cases.map(({ condition, element, start, end }) => {
 		start.slot = element.getAttribute("slot") || "";
 		end.slot = start.slot;
-		element.remove();
-	}
-	return cases;
+		const region = new DOMRegion(start, end);
+		region.hide();
+		return {
+			condition,
+			element,
+			region
+		};
+	});
 }
 /**
 * Parses a loop element.
@@ -878,18 +937,12 @@ function parseLoop(element) {
 function processConditionals(component, conditionals) {
 	for (const cases of conditionals) {
 		const conditions = [];
-		for (const { condition, element, start, end } of cases) {
-			const fragment = document.createDocumentFragment();
-			fragment.appendChild(element);
-			conditions.push({
-				attached: false,
-				callback: evaluator(component, condition, ["conditional"]),
-				element,
-				start,
-				end,
-				fragment
-			});
-		}
+		for (const { condition, element, region } of cases) conditions.push({
+			attached: false,
+			callback: evaluator(component, condition, ["conditional"]),
+			element,
+			region
+		});
 		const getActiveCondition = () => conditions.find((condition) => condition.callback());
 		component.effect(() => {
 			const activeCondition = getActiveCondition();
@@ -903,8 +956,8 @@ function processConditionals(component, conditionals) {
 					}, () => condition === getActiveCondition());
 					condition.attached = true;
 				}
-				if (condition.fragment.hasChildNodes()) condition.end.parentNode.insertBefore(condition.fragment, condition.end);
-			} else while (condition.start.nextSibling !== condition.end) condition.fragment.appendChild(condition.start.nextSibling);
+				condition.region.show();
+			} else condition.region.hide();
 		});
 	}
 }
@@ -917,7 +970,6 @@ function processLoops(component, loops) {
 	for (const { iterable, identifier, element, start, end } of loops) {
 		let loopRecords = /* @__PURE__ */ new Map();
 		const callback = evaluator(component, iterable, ["loop"], []);
-		const range = document.createRange();
 		component.effect(() => {
 			const items = callback();
 			if (!Array.isArray(items)) throw new Error(`Iterable "${iterable}" must be an array`);
@@ -939,35 +991,30 @@ function processLoops(component, loops) {
 					const loopComponent = element.cloneNode(true);
 					setInitialState(loopComponent, item);
 					const [nestedConditionals, nestedLoops] = parseBlocks(loopComponent);
+					const dispose = collectEffects(component, () => {
+						bind(component, loopComponent);
+						processConditionals(component, nestedConditionals);
+						processLoops(component, nestedLoops);
+					});
+					const region = new DOMRegion(document.createComment("item"), document.createComment("/item"));
+					region.start.slot = start.slot;
+					region.end.slot = end.slot;
+					document.createDocumentFragment().append(region.start, loopComponent, region.end);
 					record = {
 						component: loopComponent,
-						dispose: collectEffects(component, () => {
-							bind(component, loopComponent);
-							processConditionals(component, nestedConditionals);
-							processLoops(component, nestedLoops);
-						}),
-						start: document.createComment("item"),
-						end: document.createComment("/item")
+						dispose,
+						region
 					};
-					record.start.slot = start.slot;
-					record.end.slot = end.slot;
-					document.createDocumentFragment().append(record.start, loopComponent, record.end);
 				}
-				if (previousNode.nextSibling !== record.start) {
-					range.setStartBefore(record.start);
-					range.setEndAfter(record.end);
-					end.parentNode.insertBefore(range.extractContents(), previousNode.nextSibling);
-				}
-				previousNode = record.end;
+				record.region.moveBefore(previousNode.nextSibling);
+				previousNode = record.region.end;
 				record.stateKeys = Object.keys(item);
 				loopRecords.set(id, record);
 			}
 			for (const [id, record] of previousRecords) {
 				if (loopRecords.has(id)) continue;
 				record.dispose();
-				range.setStartBefore(record.start);
-				range.setEndAfter(record.end);
-				range.deleteContents();
+				record.region.remove();
 			}
 		});
 	}
@@ -1092,7 +1139,7 @@ function parseSlots(element) {
 */
 function createFallback(start, end) {
 	const fallbackEnd = document.createComment("/fallback");
-	const fragment = document.createDocumentFragment();
+	const region = new DOMRegion(start, fallbackEnd);
 	const active = useState(true);
 	let initialized = false;
 	let observer;
@@ -1105,8 +1152,8 @@ function createFallback(start, end) {
 		observer?.disconnect();
 		const show = !hasContent();
 		active(show);
-		if (show) fallbackEnd.before(fragment);
-		else while (start.nextSibling !== fallbackEnd) fragment.appendChild(start.nextSibling);
+		if (show) region.show();
+		else region.hide();
 		if (end.parentNode) {
 			observer ??= new MutationObserver(update);
 			observer.observe(end.parentNode, { childList: true });

@@ -3,6 +3,7 @@
 import { useState } from '@fr0st/state';
 import { bind } from './bind.js';
 import { parseBlocks, processConditionals, processLoops } from './blocks.js';
+import DOMRegion from './dom-region.js';
 import { collectEffects, getEffectScope } from './effect-scope.js';
 
 /**
@@ -80,7 +81,7 @@ export function parseSlots(element) {
  */
 function createFallback(start, end) {
     const fallbackEnd = document.createComment('/fallback');
-    const fragment = document.createDocumentFragment();
+    const region = new DOMRegion(start, fallbackEnd);
     const active = useState(true);
     let initialized = false;
     let observer;
@@ -104,11 +105,9 @@ function createFallback(start, end) {
         // Retain the DOM and pause its bindings while assigned content is present.
         active(show);
         if (show) {
-            fallbackEnd.before(fragment);
+            region.show();
         } else {
-            while (start.nextSibling !== fallbackEnd) {
-                fragment.appendChild(start.nextSibling);
-            }
+            region.hide();
         }
 
         // Blocks insert content directly between their assigned comment markers.

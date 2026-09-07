@@ -1,6 +1,7 @@
 /** @import { default as Component } from './component.js'; */
 
 import { bind } from './bind.js';
+import DOMRegion from './dom-region.js';
 import { collectEffects } from './effect-scope.js';
 import { evaluator } from './evaluator.js';
 import { isComponent, skipSubtree } from './helpers.js';
@@ -10,8 +11,7 @@ import { setInitialState } from './state.js';
  * @typedef {object} ConditionalCase
  * @property {string} condition The condition expression for the case.
  * @property {Element} element The template element for the case.
- * @property {Comment} start The start marker for the case.
- * @property {Comment} end The end marker for the case.
+ * @property {DOMRegion} region The case's DOM boundaries and retained content.
  */
 
 /**
@@ -95,8 +95,8 @@ function parseConditional(element) {
     const start = document.createComment(`if[${condition}]`);
     const end = document.createComment(`/if[${condition}]`);
 
-    element.parentNode.insertBefore(start, element);
-    element.parentNode.insertBefore(end, element);
+    element.before(start);
+    element.after(end);
 
     const cases = [];
     cases.push({ condition, element, start, end });
@@ -110,8 +110,8 @@ function parseConditional(element) {
             const start = document.createComment(`else-if[${condition}]`);
             const end = document.createComment(`/else-if[${condition}]`);
 
-            next.parentNode.insertBefore(start, next);
-            next.parentNode.insertBefore(end, next);
+            next.before(start);
+            next.after(end);
 
             cases.push({ condition, element: next, start, end });
             continue;
@@ -123,8 +123,8 @@ function parseConditional(element) {
             const start = document.createComment(`else`);
             const end = document.createComment(`/else`);
 
-            next.parentNode.insertBefore(start, next);
-            next.parentNode.insertBefore(end, next);
+            next.before(start);
+            next.after(end);
 
             cases.push({ condition: '{true}', element: next, start, end });
         }
@@ -132,13 +132,15 @@ function parseConditional(element) {
         break;
     }
 
-    for (const { element, start, end } of cases) {
+    return cases.map(({ condition, element, start, end }) => {
         start.slot = element.getAttribute('slot') || '';
         end.slot = start.slot;
-        element.remove();
-    }
 
-    return cases;
+        const region = new DOMRegion(start, end);
+        region.hide();
+
+        return { condition, element, region };
+    });
 };
 
 /**
@@ -176,17 +178,12 @@ function parseLoop(element) {
 export function processConditionals(component, conditionals) {
     for (const cases of conditionals) {
         const conditions = [];
-        for (const { condition, element, start, end } of cases) {
-            const fragment = document.createDocumentFragment();
-            fragment.appendChild(element);
-
+        for (const { condition, element, region } of cases) {
             conditions.push({
                 attached: false,
                 callback: evaluator(component, condition, ['conditional']),
                 element,
-                start,
-                end,
-                fragment,
+                region,
             });
         }
 
@@ -208,13 +205,9 @@ export function processConditionals(component, conditionals) {
                         condition.attached = true;
                     }
 
-                    if (condition.fragment.hasChildNodes()) {
-                        condition.end.parentNode.insertBefore(condition.fragment, condition.end);
-                    }
+                    condition.region.show();
                 } else {
-                    while (condition.start.nextSibling !== condition.end) {
-                        condition.fragment.appendChild(condition.start.nextSibling);
-                    }
+                    condition.region.hide();
                 }
             }
         });
@@ -230,7 +223,6 @@ export function processLoops(component, loops) {
     for (const { iterable, identifier, element, start, end } of loops) {
         let loopRecords = new Map();
         const callback = evaluator(component, iterable, ['loop'], []);
-        const range = document.createRange();
 
         component.effect(() => {
             const items = callback();
@@ -284,26 +276,18 @@ export function processLoops(component, loops) {
                     });
 
                     // Keep row boundaries when a component replaces or unwraps its root.
-                    record = {
-                        component: loopComponent,
-                        dispose,
-                        start: document.createComment('item'),
-                        end: document.createComment('/item'),
-                    };
-                    record.start.slot = start.slot;
-                    record.end.slot = end.slot;
+                    const region = new DOMRegion(document.createComment('item'), document.createComment('/item'));
+                    region.start.slot = start.slot;
+                    region.end.slot = end.slot;
 
                     const fragment = document.createDocumentFragment();
-                    fragment.append(record.start, loopComponent, record.end);
+                    fragment.append(region.start, loopComponent, region.end);
+
+                    record = { component: loopComponent, dispose, region };
                 }
 
-                if (previousNode.nextSibling !== record.start) {
-                    range.setStartBefore(record.start);
-                    range.setEndAfter(record.end);
-                    end.parentNode.insertBefore(range.extractContents(), previousNode.nextSibling);
-                }
-
-                previousNode = record.end;
+                record.region.moveBefore(previousNode.nextSibling);
+                previousNode = record.region.end;
 
                 record.stateKeys = Object.keys(item);
                 loopRecords.set(id, record);
@@ -315,9 +299,7 @@ export function processLoops(component, loops) {
                 }
 
                 record.dispose();
-                range.setStartBefore(record.start);
-                range.setEndAfter(record.end);
-                range.deleteContents();
+                record.region.remove();
             }
         });
     }
