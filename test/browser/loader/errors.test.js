@@ -102,6 +102,22 @@ test.describe('Component autoload', () => {
         await expect(page.locator('[x\\:component="x-slot"]')).toHaveCount(0);
     });
 
+    test('throws when autoloaded template renders a root x-suspense element', async ({ page }) => {
+        await page.route('**/components/x-bad', (route) => route.fulfill({
+            contentType: 'text/html',
+            body: '<x-suspense><span>{count}</span></x-suspense>',
+        }));
+
+        const errorPromise = page.waitForEvent('pageerror');
+        await page.evaluate(() => {
+            window.Component.bootstrap({ baseUrl: 'http://test.local/components' });
+            document.body.innerHTML = '<x-bad count="1"></x-bad>';
+        });
+        const error = await errorPromise;
+        expect(error.message).toContain('Components cannot render a root x-suspense element');
+        expect(await page.evaluate(() => customElements.get('x-bad'))).toBeUndefined();
+    });
+
     test('retries autoload after a failed fetch', async ({ page }) => {
         let requests = 0;
 

@@ -1469,7 +1469,7 @@ var Component = class extends HTMLElement {
 	/**
 	* Renders the component element.
 	* @returns {Element} The rendered root element.
-	* @throws {Error} When the template does not render exactly one non-slot root element.
+	* @throws {Error} When the template does not render exactly one supported root element.
 	*/
 	render() {
 		const fragment = document.createRange().createContextualFragment(this.constructor.template);
@@ -1485,6 +1485,7 @@ var Component = class extends HTMLElement {
 		}
 		if (fragment.childElementCount !== 1) throw new Error("Components must only render a single element");
 		if (fragment.firstElementChild.matches("slot")) throw new Error("Components cannot render a root slot element");
+		if (fragment.firstElementChild.matches("x-suspense")) throw new Error("Components cannot render a root x-suspense element");
 		return fragment.firstElementChild;
 	}
 	/**
@@ -1647,6 +1648,7 @@ function define(tagName, html, templateUrl) {
 	const elements = container.querySelectorAll(":scope > :not(script, link[rel=\"stylesheet\"], style)");
 	if (elements.length != 1) throw new Error("Components must render a single element");
 	if (elements[0].matches("slot")) throw new Error("Components cannot render a root slot element");
+	if (elements[0].matches("x-suspense")) throw new Error("Components cannot render a root x-suspense element");
 	const sourceScripts = container.querySelectorAll(":scope > script[src]");
 	const connectedScripts = container.querySelectorAll(":scope > script[connected]:not([src])");
 	const initializedScripts = container.querySelectorAll(":scope > script:not([connected], [src])");

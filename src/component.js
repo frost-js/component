@@ -340,7 +340,7 @@ export default class Component extends HTMLElement {
     /**
      * Renders the component element.
      * @returns {Element} The rendered root element.
-     * @throws {Error} When the template does not render exactly one non-slot root element.
+     * @throws {Error} When the template does not render exactly one supported root element.
      */
     render() {
         const fragment = document.createRange()
@@ -372,6 +372,10 @@ export default class Component extends HTMLElement {
 
         if (fragment.firstElementChild.matches('slot')) {
             throw new Error('Components cannot render a root slot element');
+        }
+
+        if (fragment.firstElementChild.matches('x-suspense')) {
+            throw new Error('Components cannot render a root x-suspense element');
         }
 
         return fragment.firstElementChild;

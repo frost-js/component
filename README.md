@@ -391,6 +391,8 @@ Relative URLs on top-level external scripts and stylesheet links are resolved ag
 - `<script connected>`: runs on each connection
 - `<script>`: runs during `initialize()`
 
+Scripts already present in the page are reused and must finish loading before [bootstrap](#componentbootstrapoptions) runs. Frost automatically waits for scripts it loads from component templates.
+
 ### Styles
 
 - Light DOM templates append top-level `<style>` and non-empty `<link rel="stylesheet">` tags to `document.head`; linked stylesheets are loaded once per resolved URL and awaited before the component is defined
@@ -423,6 +425,8 @@ import Component from '@fr0st/component';
 ### `Component.bootstrap(options)`
 
 Bootstraps built-in components, DOM observation, and optional autoloading for undefined `x-*` elements.
+
+Script dependencies loaded by the page or another loader must finish successfully before calling `Component.bootstrap()`. Bootstrap treats existing `<script src="...">` elements as already loaded. Place ordinary blocking scripts before the bootstrap call, or wait for asynchronous scripts to finish, including `async`, `defer`, and dynamically inserted scripts.
 
 ```js
 Component.bootstrap({
@@ -527,6 +531,8 @@ class XLoader extends Component {
 ## `x-suspense`
 
 `x-suspense` is registered when you call `Component.bootstrap(...)`. It renders fallback content until child components finish loading, then unwraps the real content.
+
+Using `x-suspense` as a component's template root throws an error because unwrapping removes the element used to track the component's lifecycle. Put it inside a persistent root element, such as `<div><x-suspense>...</x-suspense></div>`.
 
 Using the `XLoader` example above:
 

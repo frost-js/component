@@ -110,6 +110,15 @@ test.describe('Component constraints', () => {
         expect(error.message).toContain('Components cannot render a root slot element');
     });
 
+    test('throws when a component renders a root x-suspense element', async ({ page }) => {
+        await page.evaluate(() => window.Component.bootstrap());
+        await defineComponent(page, 'x-component', 'XComponent', '<x-suspense><span>{count}</span></x-suspense>');
+        const errorPromise = page.waitForEvent('pageerror');
+        await page.setContent('<x-component count="1"></x-component>');
+        const error = await errorPromise;
+        expect(error.message).toContain('Components cannot render a root x-suspense element');
+    });
+
     for (const shadowMode of [null, 'open', 'closed']) {
         for (const directive of ['x:if', 'x:else-if', 'x:else', 'x:each']) {
             test(`rejects ${directive} directly on slots in ${shadowMode || 'light'} mode, including inactive branches`, async ({ page }) => {

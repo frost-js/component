@@ -114,6 +114,10 @@ function define(tagName, html, templateUrl) {
         throw new Error('Components cannot render a root slot element');
     }
 
+    if (elements[0].matches('x-suspense')) {
+        throw new Error('Components cannot render a root x-suspense element');
+    }
+
     const sourceScripts = container.querySelectorAll(':scope > script[src]');
     const connectedScripts = container.querySelectorAll(':scope > script[connected]:not([src])');
     const initializedScripts = container.querySelectorAll(':scope > script:not([connected], [src])');
