@@ -369,6 +369,16 @@ Slots work in both light DOM and shadow DOM components.
 
 In light DOM components, Frost Component replaces descendant `<slot>` elements with markers and moves matching children into place. Fallback content is shown when no element or text nodes are assigned; comment markers from empty blocks do not replace it. Removing assigned content restores the same fallback nodes, with bindings paused while hidden and resumed when shown. In shadow mode, assigned children continue to behave like native slotted content.
 
+In both modes, putting `x:if`, `x:else-if`, `x:else`, or `x:each` directly on `<slot>` throws an error. Put conditionals on a wrapping element instead:
+
+```html
+<section x:if="show">
+    <slot name="body"></slot>
+</section>
+```
+
+`x:each` requires a component element. Conditionals and loops remain supported in fallback content and in content supplied to a slot.
+
 ## HTML Template Components
 
 Autoloaded HTML components can include one render root plus optional top-level scripts and styles. These scripts and styles must be direct children of the template, not nested inside the render root.

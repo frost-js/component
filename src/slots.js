@@ -85,17 +85,21 @@ function createFallback(start, end) {
     let initialized = false;
     let observer;
 
-    const update = () => {
-        observer?.disconnect();
-
-        let show = true;
+    const hasContent = () => {
         let current = fallbackEnd;
         while ((current = current.nextSibling) && current !== end) {
             if (current.nodeType === Node.ELEMENT_NODE || current.nodeType === Node.TEXT_NODE) {
-                show = false;
-                break;
+                return true;
             }
         }
+
+        return false;
+    };
+
+    const update = () => {
+        observer?.disconnect();
+
+        const show = !hasContent();
 
         // Retain the DOM and pause its bindings while assigned content is present.
         active(show);
@@ -124,17 +128,19 @@ function createFallback(start, end) {
         let bound = false;
 
         component.effect(() => {
-            if (bound || !active()) {
+            if (bound || !active() || hasContent()) {
                 return;
             }
 
             // A fallback hidden by initial content binds only when first shown.
             const [conditionals, loops] = parseBlocks(start);
+
+            // Bindings may run before the assignment observer updates active.
             collectEffects(component, () => {
                 bind(component, start);
                 processConditionals(component, conditionals);
                 processLoops(component, loops);
-            }, active);
+            }, () => active() && !hasContent());
             bound = true;
         });
     };

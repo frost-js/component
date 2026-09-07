@@ -356,6 +356,7 @@ export default class Component extends HTMLElement {
      * Renders the component element.
      * @returns {Element} The rendered root element.
      * @throws {Error} When the template does not render exactly one non-slot root element.
+     * @throws {Error} When a slot has conditional or loop directives.
      */
     render() {
         const fragment = document.createRange()
@@ -387,6 +388,10 @@ export default class Component extends HTMLElement {
 
         if (fragment.firstElementChild.matches('slot')) {
             throw new Error('Components cannot render a root slot element');
+        }
+
+        if (fragment.querySelector('slot:is([x\\:if], [x\\:else-if], [x\\:else], [x\\:each])')) {
+            throw new Error('Slot elements cannot have conditional or loop directives');
         }
 
         return fragment.firstElementChild;

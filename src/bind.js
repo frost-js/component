@@ -330,16 +330,18 @@ function bindInput(component, element, name, value) {
         return;
     }
 
+    let update;
+
     if (element.matches('input[type="checkbox"]')) {
         component.state(value, false);
 
-        component.effect(() => {
+        update = () => {
             if (Array.isArray(component.state[value])) {
                 element.checked = component.state[value].includes(element.value);
             } else {
                 element.checked = !!component.state[value];
             }
-        });
+        };
 
         element.addEventListener('change', () => {
             if (Array.isArray(component.state[value])) {
@@ -355,9 +357,9 @@ function bindInput(component, element, name, value) {
             }
         });
     } else if (element.matches('input[type="radio"]')) {
-        component.effect(() => {
+        update = () => {
             element.checked = component.state[value] == element.value;
-        });
+        };
 
         element.addEventListener('change', () => {
             if (element.checked) {
@@ -373,7 +375,7 @@ function bindInput(component, element, name, value) {
             component.state(value, []);
         }
 
-        const update = multiple ?
+        update = multiple ?
             () => {
                 const values = component.state[value];
                 for (const option of element.options) {
@@ -385,20 +387,6 @@ function bindInput(component, element, name, value) {
                     '' :
                     component.state[value];
             };
-
-        component.effect(update);
-
-        if (element.localName === 'select') {
-            // Option changes do not rerun the state effect, so reapply the selection.
-            const observer = new MutationObserver(update);
-            observer.observe(element, {
-                attributeFilter: ['value'],
-                characterData: true,
-                childList: true,
-                subtree: true,
-            });
-            getEffectScope(component)?.cleanups.add(() => observer.disconnect());
-        }
 
         const change = multiple ?
             () => {
@@ -413,6 +401,25 @@ function bindInput(component, element, name, value) {
         if (!multiple) {
             element.addEventListener('input', change);
         }
+    }
+
+    if (!update) {
+        return;
+    }
+
+    component.effect(update);
+
+    if (element.matches('input[type="checkbox"], input[type="radio"], select')) {
+        // DOM value and option changes also affect the current selection.
+        const select = element.localName === 'select';
+        const observer = new MutationObserver(update);
+        observer.observe(element, {
+            attributeFilter: ['value'],
+            characterData: select,
+            childList: select,
+            subtree: select,
+        });
+        getEffectScope(component)?.cleanups.add(() => observer.disconnect());
     }
 };
 

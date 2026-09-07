@@ -109,4 +109,42 @@ test.describe('Component constraints', () => {
         const error = await errorPromise;
         expect(error.message).toContain('Components cannot render a root slot element');
     });
+
+    for (const shadowMode of [null, 'open', 'closed']) {
+        for (const directive of ['x:if', 'x:else-if', 'x:else', 'x:each']) {
+            test(`rejects ${directive} directly on slots in ${shadowMode || 'light'} mode, including inactive branches`, async ({ page }) => {
+                await defineComponent(page, 'x-component', 'XComponent', `<div><section x:if="false"><slot ${directive}="items"></slot></section></div>`);
+                await page.evaluate((shadowMode) => {
+                    window.XComponent.shadowMode = shadowMode;
+                }, shadowMode);
+
+                const errorPromise = page.waitForEvent('pageerror');
+                await page.setContent('<x-component></x-component>');
+                const error = await errorPromise;
+                expect(error.message).toContain('Slot elements cannot have conditional or loop directives');
+            });
+        }
+
+        test(`supports conditional wrappers around slots in ${shadowMode || 'light'} mode`, async ({ page }) => {
+            await defineComponent(page, 'x-component', 'XComponent', '<div><section x:if="show"><slot name="body"></slot></section></div>');
+            await page.evaluate((shadowMode) => {
+                window.XComponent.shadowMode = shadowMode;
+                window._component = document.createElement('x-component');
+                window._component.state.show = true;
+                window._component.innerHTML = '<input slot="body">';
+                document.body.appendChild(window._component);
+            }, shadowMode);
+            await page.waitForFunction(() => window._component.loaded);
+
+            const input = page.locator('input');
+            await input.fill('Draft');
+            await page.evaluate(() => window._component.state.show = 1);
+            await expect(input).toBeFocused();
+            await page.evaluate(() => window._component.state.show = false);
+            await expect(input).toBeHidden();
+            await page.evaluate(() => window._component.state.show = true);
+            await expect(input).toBeVisible();
+            await expect(input).toHaveValue('Draft');
+        });
+    }
 });

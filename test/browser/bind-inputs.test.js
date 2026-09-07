@@ -328,6 +328,52 @@ test.describe('Component input bindings', () => {
         expect(choice).toBe('b');
     });
 
+    for (const type of ['checkbox', 'radio']) {
+        for (const valueFirst of [false, true]) {
+            test(`updates ${type} selection when its value changes, with :value ${valueFirst ? 'first' : 'last'}`, async ({ page }) => {
+                await defineComponent(page, 'x-component', 'XComponent', `<div><input type="${type}" ${valueFirst ? ':value="choice" x:bind="selection"' : 'x:bind="selection" :value="choice"'}></div>`);
+                await page.setContent(`<x-component choice="a" selection="${type === 'checkbox' ? '[\'a\']' : 'a'}"></x-component>`);
+                await waitForComponent(page, 'x-component');
+
+                const input = page.locator('input');
+                await expect(input).toHaveValue('a');
+                await expect(input).toBeChecked();
+                await updateState(page, 'x-component', { choice: 'b' });
+                await expect(input).toHaveValue('b');
+                await expect(input).not.toBeChecked();
+                expect(await page.evaluate(() => document.querySelector('[x\\:component="x-component"]').component.state.selection))
+                    .toEqual(type === 'checkbox' ? ['a'] : 'a');
+
+                await input.check();
+                expect(await page.evaluate(() => document.querySelector('[x\\:component="x-component"]').component.state.selection))
+                    .toEqual(type === 'checkbox' ? ['a', 'b'] : 'b');
+                await updateState(page, 'x-component', { choice: 'c' });
+                await expect(input).not.toBeChecked();
+            });
+        }
+
+        test(`stops observing ${type} values when their loop row is removed`, async ({ page }) => {
+            await defineComponent(page, 'x-row', 'XRow', '<div><slot></slot></div>');
+            await defineComponent(page, 'x-parent', 'XParent', `<div><x-row x:each="items"><input type="${type}" value="a" x:bind="selection"></x-row></div>`);
+            await page.setContent(`<x-parent items="[{ id: 1 }]" selection="${type === 'checkbox' ? '[\'a\']' : 'a'}"></x-parent>`);
+            await waitForComponent(page, 'x-parent');
+            await expect(page.locator('input')).toBeChecked();
+            await page.evaluate(() => {
+                window._input = document.querySelector('input');
+            });
+
+            await updateState(page, 'x-parent', { items: [] });
+            await expect(page.locator('input')).toHaveCount(0);
+            await page.evaluate(() => {
+                window._input.checked = false;
+                window._input.value = 'b';
+                window._input.value = 'a';
+            });
+            await flushTasks(page);
+            expect(await page.evaluate(() => window._input.checked)).toBe(false);
+        });
+    }
+
     test('clears radio state when unchecked', async ({ page }) => {
         await defineComponent(page, 'x-component', 'XComponent', '<div><input id="a" type="radio" name="r" value="a" x:bind="choice"></div>');
         await page.setContent('<x-component choice="a"></x-component>');

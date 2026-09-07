@@ -293,6 +293,34 @@ test.describe('Component slots', () => {
         }
     }
 
+    for (const directive of ['x:if', 'x:each']) {
+        for (const userFirst of [false, true]) {
+            test(`pauses fallback during batched ${directive} replacement with user ${userFirst ? 'first' : 'last'}`, async ({ page }) => {
+                const errors = [];
+                page.on('pageerror', (error) => errors.push(error.message));
+                await defineComponent(page, 'x-shell', 'XShell', '<section><slot><i>{{ this.state.user.name }}</i></slot></section>');
+                await defineComponent(page, 'x-row', 'XRow', '<b>Assigned</b>');
+                await defineComponent(page, 'x-parent', 'XParent', `<div><x-shell :user="user">${directive === 'x:if' ? '<b x:if="show">Assigned</b>' : '<x-row x:each="items"></x-row>'}</x-shell></div>`);
+                await page.setContent('<x-parent user="{ name: \'Fallback\' }" show="false" items="[]"></x-parent>');
+                await waitForComponent(page, 'x-parent');
+                await expect(page.locator('section')).toHaveText('Fallback');
+
+                await page.evaluate(({ directive, userFirst }) => {
+                    const parent = document.querySelector('[x\\:component="x-parent"]').component;
+                    const change = directive === 'x:if' ? { show: true } : { items: [{ id: 1 }] };
+                    parent.state.set(userFirst ? { user: null, ...change } : { ...change, user: null });
+                }, { directive, userFirst });
+                await expect(page.locator('section')).toHaveText('Assigned');
+                await flushTasks(page);
+                expect(errors).toEqual([]);
+
+                await updateState(page, 'x-parent', { user: { name: 'Restored' }, show: false, items: [] });
+                await expect(page.locator('section')).toHaveText('Restored');
+                expect(errors).toEqual([]);
+            });
+        }
+    }
+
     test('keeps fallback for comments but clears it for an empty text node', async ({ page }) => {
         await defineComponent(page, 'x-parent', 'XParent', '<div><slot><span>Fallback</span></slot></div>');
         await page.setContent('<x-parent></x-parent>');

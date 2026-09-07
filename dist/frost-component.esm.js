@@ -552,12 +552,13 @@ function bindEvent(component, element, name, value) {
 function bindInput(component, element, name, value) {
 	element.removeAttribute(name);
 	if (!value) return;
+	let update;
 	if (element.matches("input[type=\"checkbox\"]")) {
 		component.state(value, false);
-		component.effect(() => {
+		update = () => {
 			if (Array.isArray(component.state[value])) element.checked = component.state[value].includes(element.value);
 			else element.checked = !!component.state[value];
-		});
+		};
 		element.addEventListener("change", () => {
 			if (Array.isArray(component.state[value])) {
 				if (element.checked) {
@@ -566,9 +567,9 @@ function bindInput(component, element, name, value) {
 			} else component.state[value] = element.checked;
 		});
 	} else if (element.matches("input[type=\"radio\"]")) {
-		component.effect(() => {
+		update = () => {
 			element.checked = component.state[value] == element.value;
-		});
+		};
 		element.addEventListener("change", () => {
 			if (element.checked) component.state[value] = element.value;
 			else if (component.state[value] == element.value) component.state[value] = void 0;
@@ -576,23 +577,12 @@ function bindInput(component, element, name, value) {
 	} else if (element.matches("input, select, textarea")) {
 		const multiple = element.matches("select[multiple]");
 		if (multiple) component.state(value, []);
-		const update = multiple ? () => {
+		update = multiple ? () => {
 			const values = component.state[value];
 			for (const option of element.options) option.selected = Array.isArray(values) && values.includes(option.value);
 		} : () => {
 			element.value = isEmpty(component.state[value]) ? "" : component.state[value];
 		};
-		component.effect(update);
-		if (element.localName === "select") {
-			const observer = new MutationObserver(update);
-			observer.observe(element, {
-				attributeFilter: ["value"],
-				characterData: true,
-				childList: true,
-				subtree: true
-			});
-			getEffectScope(component)?.cleanups.add(() => observer.disconnect());
-		}
 		const change = multiple ? () => {
 			component.state[value] = [...element.selectedOptions].map((option) => option.value);
 		} : () => {
@@ -600,6 +590,19 @@ function bindInput(component, element, name, value) {
 		};
 		element.addEventListener("change", change);
 		if (!multiple) element.addEventListener("input", change);
+	}
+	if (!update) return;
+	component.effect(update);
+	if (element.matches("input[type=\"checkbox\"], input[type=\"radio\"], select")) {
+		const select = element.localName === "select";
+		const observer = new MutationObserver(update);
+		observer.observe(element, {
+			attributeFilter: ["value"],
+			characterData: select,
+			childList: select,
+			subtree: select
+		});
+		getEffectScope(component)?.cleanups.add(() => observer.disconnect());
 	}
 }
 /**
@@ -1081,14 +1084,14 @@ function createFallback(start, end) {
 	const active = useState(true);
 	let initialized = false;
 	let observer;
+	const hasContent = () => {
+		let current = fallbackEnd;
+		while ((current = current.nextSibling) && current !== end) if (current.nodeType === Node.ELEMENT_NODE || current.nodeType === Node.TEXT_NODE) return true;
+		return false;
+	};
 	const update = () => {
 		observer?.disconnect();
-		let show = true;
-		let current = fallbackEnd;
-		while ((current = current.nextSibling) && current !== end) if (current.nodeType === Node.ELEMENT_NODE || current.nodeType === Node.TEXT_NODE) {
-			show = false;
-			break;
-		}
+		const show = !hasContent();
 		active(show);
 		if (show) fallbackEnd.before(fragment);
 		else while (start.nextSibling !== fallbackEnd) fragment.appendChild(start.nextSibling);
@@ -1103,13 +1106,13 @@ function createFallback(start, end) {
 		getEffectScope(component)?.cleanups.add(() => observer?.disconnect());
 		let bound = false;
 		component.effect(() => {
-			if (bound || !active()) return;
+			if (bound || !active() || hasContent()) return;
 			const [conditionals, loops] = parseBlocks(start);
 			collectEffects(component, () => {
 				bind(component, start);
 				processConditionals(component, conditionals);
 				processLoops(component, loops);
-			}, active);
+			}, () => active() && !hasContent());
 			bound = true;
 		});
 	};
@@ -1382,6 +1385,7 @@ var Component = class extends HTMLElement {
 	* Renders the component element.
 	* @returns {Element} The rendered root element.
 	* @throws {Error} When the template does not render exactly one non-slot root element.
+	* @throws {Error} When a slot has conditional or loop directives.
 	*/
 	render() {
 		const fragment = document.createRange().createContextualFragment(this.constructor.template);
@@ -1397,6 +1401,7 @@ var Component = class extends HTMLElement {
 		}
 		if (fragment.childElementCount !== 1) throw new Error("Components must only render a single element");
 		if (fragment.firstElementChild.matches("slot")) throw new Error("Components cannot render a root slot element");
+		if (fragment.querySelector("slot:is([x\\:if], [x\\:else-if], [x\\:else], [x\\:each])")) throw new Error("Slot elements cannot have conditional or loop directives");
 		return fragment.firstElementChild;
 	}
 	/**
