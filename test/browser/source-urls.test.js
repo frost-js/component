@@ -1,10 +1,9 @@
 import { expect, test } from '#test';
-import { defineComponent, initializePage } from '../support/utils.js';
+import { defineComponent } from '../support/utils.js';
 
 test.describe('Dynamic source URLs', () => {
-    test.beforeEach(async ({ page, browserName }) => {
+    test.beforeEach(async ({ browserName }) => {
         test.skip(browserName === 'webkit', 'WebKit omits Function source URLs from Error.stack');
-        await initializePage(page);
     });
 
     test('uses stable source URLs for binding expressions', async ({ page }) => {

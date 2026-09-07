@@ -1,28 +1,30 @@
+import path from 'node:path';
 import process from 'node:process';
 import { test as base, expect } from '@playwright/test';
 import { addCoverageReport } from 'monocart-reporter';
 
-let test = base;
+const distPath = path.resolve('dist/frost-component.js');
+const collectCoverage = process.env.FROST_COMPONENT_COVERAGE === 'true';
 
-if (process.env.FROST_COMPONENT_COVERAGE === 'true') {
-    test = base.extend({
-        coverage: [
-            async ({ page }, use, testInfo) => {
+const test = base.extend({
+    componentPage: [
+        async ({ page }, use, testInfo) => {
+            if (collectCoverage) {
                 await page.coverage.startJSCoverage({
                     resetOnNavigation: false,
                 });
+            }
 
-                await use();
+            await page.addScriptTag({ path: distPath });
+            await use();
 
+            if (collectCoverage) {
                 const coverage = await page.coverage.stopJSCoverage();
                 await addCoverageReport(coverage, testInfo);
-            },
-            {
-                auto: true,
-                scope: 'test',
-            },
-        ],
-    });
-}
+            }
+        },
+        { auto: true },
+    ],
+});
 
 export { expect, test };

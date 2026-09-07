@@ -1,11 +1,6 @@
 import { expect, test } from '#test';
-import { initializePage } from '../../support/utils.js';
 
 test.describe('Component assets', () => {
-    test.beforeEach(async ({ page }) => {
-        await initializePage(page);
-    });
-
     test('resolves component assets without changing rendered URLs', async ({ page }) => {
         await page.route('**/*', async (route) => {
             const url = route.request().url();
