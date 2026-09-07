@@ -1,6 +1,6 @@
 {
     "name": "@fr0st/component",
-    "version": "2.1.2",
+    "version": "3.0.0",
     "private": false,
     "description": "Native JavaScript stateful web components with reactive bindings, slots, shadow DOM, suspense, and HTML template autoloading.",
     "keywords": [
