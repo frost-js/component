@@ -7,7 +7,7 @@
 [![JS gzip size](https://img.badgesize.io/frost-js/component/main/dist/frost-component.min.js?compression=gzip&label=JS%20gzip%20size&style=flat-square)](https://github.com/frost-js/component/blob/main/dist/frost-component.min.js)
 [![license](https://img.shields.io/github/license/frost-js/component?style=flat-square)](./LICENSE)
 
-Native JavaScript stateful web components with reactive bindings, slots, shadow DOM, suspense, and HTML template autoloading, with dynamic component loading and no compilation step.
+Native JavaScript stateful web components with reactive bindings, slots, shadow DOM, suspense, and HTML template autoloading, with no compilation step.
 
 ## Highlights
 
@@ -29,7 +29,7 @@ Native JavaScript stateful web components with reactive bindings, slots, shadow 
 npm i @fr0st/component
 ```
 
-Frost Component's package entry point is ESM-only. Import the default `Component` export in browser projects and bundlers.
+Frost Component's package entry point is ESM-only and requires a browser DOM. Import the default `Component` export in browser projects and bundlers.
 
 ```js
 import Component from '@fr0st/component';
@@ -69,7 +69,7 @@ Load the bundle from your own copy or a CDN:
 </script>
 ```
 
-The browser bundle exposes `globalThis.Component`. Call `Component.bootstrap(...)` to start the runtime and register built-ins such as `x-suspense`.
+The UMD bundle includes `@fr0st/state` and exposes `globalThis.Component`. Call `Component.bootstrap(...)` to start the runtime and register built-ins such as `x-suspense`.
 
 The package root resolves to the prebuilt ESM bundle. Published files under `dist/` and `src/` are also available through matching package subpaths.
 
@@ -123,6 +123,8 @@ You can also define components directly with `customElements.define(...)`.
 ```js
 import Component from '@fr0st/component';
 
+Component.bootstrap();
+
 class XGreeting extends Component {
     static get template() {
         return `
@@ -152,7 +154,7 @@ Frost Component revolves around a small base class and declarative template bind
 
 - Component tag names must begin with `x-`
 - Components must render exactly one root element
-- Root `<slot>` elements are not allowed
+- Root `<slot>` and `<x-suspense>` elements are not allowed
 - `this.state` is a `StateStore` from [`@fr0st/state`](https://www.npmjs.com/package/@fr0st/state)
 - Non-`x:` host attributes other than `slot` become initial state and are removed from the host
 - `x:key` exposes keyed descendants directly on the component instance; keys must be unique and cannot conflict with existing component properties
@@ -177,6 +179,8 @@ this.state.active; // true
 this.state.theme; // 'dark'
 this.state.compact; // true
 ```
+
+State values follow [Frost State's update rules](https://github.com/frost-js/state#behavior-notes): replace plain objects and arrays to trigger updates. Mutating their contents in place does not notify bindings.
 
 `x:key` lets you grab important nodes directly from the instance:
 
@@ -207,6 +211,8 @@ Text nodes interpolate state keys with single braces and full expressions with d
 ```html
 <p>Hello {name}. Next: {{ this.state.count + 1 }}</p>
 ```
+
+Interpolated values are written as text. HTML markup and braces in those values remain literal, including when the text is passed through a slot.
 
 ### Attributes
 
@@ -266,8 +272,10 @@ Supported modifiers:
 
 ```html
 <button @click.prevent="{ this.dispatch('save') }">Save</button>
-<x-item @remove="(event) => { this.removeItem(event.target.state.id) }"></x-item>
+<x-item @remove="(event) => { this.removeItem(event.detail.id) }"></x-item>
 ```
+
+A child can send that identifier with `this.dispatch('remove', { id: this.state.id })`. Event data is available through `event.detail` in both light and shadow DOM.
 
 ### Form inputs
 
@@ -369,6 +377,8 @@ Slots work in both light DOM and shadow DOM components.
 
 In light DOM components, Frost Component replaces descendant `<slot>` elements with markers and moves matching children into place. Fallback content is shown when no element or text nodes are assigned; comment markers from empty blocks do not replace it. Removing assigned content restores the same fallback nodes, with bindings paused while hidden and resumed when shown. In shadow mode, assigned children continue to behave like native slotted content.
 
+Content supplied to a slot keeps the declaring component's bindings, including when forwarded through other components. Fallback content declared inside `<slot>` binds to the component that owns that template.
+
 In both modes, putting `x:if`, `x:else-if`, `x:else`, or `x:each` directly on `<slot>` throws an error. Put conditionals on a wrapping element instead:
 
 ```html
@@ -446,15 +456,15 @@ You can call `Component.bootstrap()` more than once. Omitted options keep the cu
 
 - `component.state`: the component's reactive `StateStore`
 - `component.element`: the component's current public DOM node and dispatch surface; the host until replacement, then the current rendered element through nested light-DOM roots. Shadow components always expose their host.
-- `component.rootElement`: the root element returned by `render()`
-- `component.renderRoot`: the container that holds rendered output; a `ShadowRoot` in shadow mode, otherwise `rootElement`
+- `component.rootElement`: the root originally returned by `render()`; this reference stays the same after nested root replacements
+- `component.renderRoot`: the `ShadowRoot` in shadow mode, otherwise `rootElement`
 - `component.parentComponent`: the owning parent component instance, if any
-- `component.childComponents`: child component instances rendered inside this component
+- `component.childComponents`: immediate rendered child components, including elements still awaiting definition
 - `component.connected`: whether the component has entered the connection lifecycle
 - `component.mounted`: whether the runtime currently considers the component mounted in the observed DOM
 - `component.visible`: whether the runtime currently considers the component visible
-- `component.initialized`: whether state parsing, binding, and `initialize()` have completed
-- `component.loaded`: whether child components and deferred loads have finished settling
+- `component.initialized`: whether state parsing and initial DOM placement have completed; set before `initialize()` and bindings run
+- `component.loaded`: whether the initial wait for child components and deferred loads has completed; adding children afterward does not reset it
 
 ### Instance methods
 
@@ -470,9 +480,13 @@ You can call `Component.bootstrap()` more than once. Omitted options keep the cu
 
 On the initial connection, `onConnected()` runs before the `connected` event. State is then parsed and the rendered root is placed in the DOM before `initialize()` runs. Bindings and blocks are activated next, followed by the `initialized` event. The `loaded` event follows once child components and any `deferLoad()` promises have settled.
 
+While loading is pending, newly added children join the wait and removed children no longer delay completion.
+
 When a light-DOM host is replaced, the component emits a non-bubbling `elementchange` event with `{ element, previous }` in `event.detail`. Listen on the component instance. Its `element` property is already updated when the event fires, including when a nested component root is replaced later. DOM event bindings follow these changes automatically; lifecycle event bindings stay on the component instance.
 
 Shadow components call `onConnected()` again when reconnected, without repeating initialization. The `mounted`, `dismounted`, `visible`, and `invisible` events come from the DOM observers installed by `Component.bootstrap()` and are separate from initialization.
+
+Move or reattach a light-DOM component through its current `element`. Reattaching its original initialized host throws an error.
 
 ### Effects
 
@@ -496,7 +510,7 @@ class XCounter extends Component {
 }
 ```
 
-Effects are always deferred until the component is mounted. By default they also wait until the component is visible, and any skipped re-runs are flushed on the next `visible` event.
+Effects are always deferred until the component is mounted. By default they also wait until the component is visible, and skipped re-runs are flushed when the component is mounted or becomes visible again.
 
 Pass `{ waitForVisible: false }` when the effect should continue to run while the component is mounted but off-screen:
 
@@ -526,7 +540,11 @@ class XLoader extends Component {
         );
     }
 }
+
+customElements.define('x-loader', XLoader);
 ```
+
+Call `deferLoad()` before the component has loaded; calling it afterward throws. Both fulfilled and rejected promises release the loading gate, so handle failures in your own promise chain when the UI should display an error.
 
 ## `x-suspense`
 
@@ -548,6 +566,8 @@ Using the `XLoader` example above:
 
 The fallback stays visible until the child components finish loading, including any promises passed to `deferLoad()`.
 
+Bindings inside a fallback template use the declaring component's state, methods, and enclosing conditional scope, including when forwarded through another component. Those bindings are cleaned up when the main content finishes loading and the fallback is removed.
+
 ## Behavior Notes
 
 - Light DOM components replace their custom-element host with the rendered root. Shadow components keep the host element.
@@ -560,13 +580,17 @@ The fallback stays visible until the child components finish loading, including 
 
 ## Development
 
+Install dependencies with `npm ci`, then install Playwright browsers with `npx playwright install --with-deps`.
+
 ```bash
 npm test
 npm run lint
 npm run build
 ```
 
-`npm test` runs the Playwright suite in Chromium, Firefox, and WebKit.
+`npm test` rebuilds the bundles, then runs the Playwright suite in Chromium, Firefox, and WebKit. `npm run test:browser` runs the suite against the existing bundles, so rebuild after changing source files.
+
+After building, `npm run test:coverage` runs Chromium tests and writes coverage reports to `coverage/`.
 
 ## License
 
