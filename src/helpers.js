@@ -75,29 +75,40 @@ export function findParent(component) {
 };
 
 /**
- * Finds child components rendered within an element subtree.
+ * Finds child components and the DOM subtrees that can change their membership.
  * @param {Component} component The root component.
  * @param {Element} element The element to scan.
- * @param {Component[]} [components=[]] The accumulator for discovered components.
- * @returns {Component[]} The collected child components.
+ * @returns {{ children: Component[], targets: Set<Element> }} The child components and observation targets.
  */
-export function findChildren(component, element, components = []) {
-    if (element.component && element.component !== component) {
-        components.push(element.component);
-    } else if (isComponent(element.localName)) {
-        components.push(element);
-    } else if (element instanceof HTMLSlotElement) {
-        const assigned = element.assignedElements({ flatten: true });
-        for (const child of assigned) {
-            findChildren(component, child, components);
-        }
-    } else {
-        for (const child of element.children) {
-            findChildren(component, child, components);
-        }
+export function findChildren(component, element) {
+    const children = [];
+    const targets = new Set([element]);
+
+    if (component.renderRoot instanceof ShadowRoot) {
+        targets.add(component);
     }
 
-    return components;
+    const visit = (element) => {
+        if (element.component && element.component !== component) {
+            children.push(element.component);
+        } else if (isComponent(element.localName)) {
+            children.push(element);
+        } else if (element instanceof HTMLSlotElement) {
+            for (const child of element.assignedElements({ flatten: true })) {
+                // Forwarded content can live outside the root and host subtrees.
+                targets.add(child);
+                visit(child);
+            }
+        } else {
+            for (const child of element.children) {
+                visit(child);
+            }
+        }
+    };
+
+    visit(element);
+
+    return { children, targets };
 };
 
 /**
@@ -138,7 +149,7 @@ export function skipSubtree(walker) {
  * @returns {Promise<void>} A promise that resolves when no pending children remain.
  */
 export function waitForChildren(component, element = component.rootElement) {
-    let pendingChildren = findChildren(component, element)
+    let pendingChildren = findChildren(component, element).children
         .filter((child) => !child.loaded);
 
     if (!pendingChildren.length) {
@@ -147,7 +158,7 @@ export function waitForChildren(component, element = component.rootElement) {
 
     return new Promise((resolve) => {
         const check = () => {
-            const children = findChildren(component, element);
+            const { children, targets } = findChildren(component, element);
             pendingChildren = pendingChildren.filter((child) => {
                 if (child.loaded) {
                     return false;
@@ -171,27 +182,11 @@ export function waitForChildren(component, element = component.rootElement) {
             observer.disconnect();
 
             if (pendingChildren.length) {
-                const targets = new Set([element]);
-
-                if (component.renderRoot instanceof ShadowRoot) {
-                    targets.add(component);
-                }
-
                 for (const target of targets) {
                     observer.observe(target, {
                         childList: true,
                         subtree: true,
                     });
-
-                    for (const slot of [target, ...target.querySelectorAll('slot')]) {
-                        if (!(slot instanceof HTMLSlotElement)) {
-                            continue;
-                        }
-
-                        for (const assigned of slot.assignedElements({ flatten: true })) {
-                            targets.add(assigned);
-                        }
-                    }
                 }
 
                 return;

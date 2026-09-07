@@ -74,6 +74,58 @@ test.describe('Shadow mode', () => {
             });
         }
 
+        test(`waits for children added to an empty forwarded wrapper in ${shadowMode} mode`, async ({ page }) => {
+            await page.evaluate((shadowMode) => {
+                class XChild extends window.Component {
+                    static shadowMode = shadowMode;
+
+                    initialize() {
+                        this.deferLoad(new Promise(() => {}));
+                    }
+                }
+
+                class XInner extends window.Component {
+                    static shadowMode = shadowMode;
+                }
+
+                class XOuter extends window.Component {
+                    static shadowMode = shadowMode;
+
+                    static get template() {
+                        return '<div><x-inner><slot></slot></x-inner></div>';
+                    }
+                }
+
+                customElements.define('x-child', XChild);
+                customElements.define('x-inner', XInner);
+                customElements.define('x-outer', XOuter);
+                document.body.innerHTML = '<x-outer><x-child></x-child><section></section></x-outer>';
+                window._outer = document.querySelector('x-outer');
+                window._inner = window._outer.rootElement.querySelector('x-inner');
+                window._first = document.querySelector('x-child');
+            }, shadowMode);
+            await page.waitForFunction(() => window._first.initialized && window._inner.initialized);
+            expect(await page.evaluate(() => [window._inner.loaded, window._outer.loaded])).toEqual([false, false]);
+
+            await page.evaluate(() => {
+                window._second = document.createElement('x-child');
+                document.querySelector('section').appendChild(window._second);
+            });
+            await page.waitForFunction(() => window._second.initialized);
+            expect(await page.evaluate(() => window._inner.childComponents.includes(window._second))).toBe(true);
+
+            await page.evaluate(() => window._first.remove());
+            await page.waitForFunction(() => window._inner.childComponents.length === 1);
+            expect(await page.evaluate(() => [window._inner.loaded, window._outer.loaded])).toEqual([false, false]);
+
+            await page.evaluate(() => window._second.remove());
+            await page.waitForFunction(() => window._inner.loaded && window._outer.loaded);
+            expect(await page.evaluate(() => ({
+                children: window._inner.childComponents.length,
+                removedChildrenLoaded: [window._first.loaded, window._second.loaded],
+            }))).toEqual({ children: 0, removedChildrenLoaded: [false, false] });
+        });
+
         for (const reassign of [false, true]) {
             test(`loads after removing a pending child from ${reassign ? 'reassigned' : 'forwarded'} slot content in ${shadowMode} mode`, async ({ page }) => {
                 await page.evaluate((shadowMode) => {

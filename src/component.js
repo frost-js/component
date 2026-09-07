@@ -100,7 +100,7 @@ export default class Component extends HTMLElement {
      * @returns {Component[]} The child components rendered within this component.
      */
     get childComponents() {
-        return findChildren(this, this.#rootElement);
+        return findChildren(this, this.#rootElement).children;
     }
 
     /**

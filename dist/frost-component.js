@@ -639,20 +639,29 @@
 		return null;
 	}
 	/**
-	* Finds child components rendered within an element subtree.
+	* Finds child components and the DOM subtrees that can change their membership.
 	* @param {Component} component The root component.
 	* @param {Element} element The element to scan.
-	* @param {Component[]} [components=[]] The accumulator for discovered components.
-	* @returns {Component[]} The collected child components.
+	* @returns {{ children: Component[], targets: Set<Element> }} The child components and observation targets.
 	*/
-	function findChildren(component, element, components = []) {
-		if (element.component && element.component !== component) components.push(element.component);
-		else if (isComponent(element.localName)) components.push(element);
-		else if (element instanceof HTMLSlotElement) {
-			const assigned = element.assignedElements({ flatten: true });
-			for (const child of assigned) findChildren(component, child, components);
-		} else for (const child of element.children) findChildren(component, child, components);
-		return components;
+	function findChildren(component, element) {
+		const children = [];
+		const targets = /* @__PURE__ */ new Set([element]);
+		if (component.renderRoot instanceof ShadowRoot) targets.add(component);
+		const visit = (element) => {
+			if (element.component && element.component !== component) children.push(element.component);
+			else if (isComponent(element.localName)) children.push(element);
+			else if (element instanceof HTMLSlotElement) for (const child of element.assignedElements({ flatten: true })) {
+				targets.add(child);
+				visit(child);
+			}
+			else for (const child of element.children) visit(child);
+		};
+		visit(element);
+		return {
+			children,
+			targets
+		};
 	}
 	/**
 	* Flattens a node list into a list of element nodes and their descendants.
@@ -679,11 +688,11 @@
 	* @returns {Promise<void>} A promise that resolves when no pending children remain.
 	*/
 	function waitForChildren(component, element = component.rootElement) {
-		let pendingChildren = findChildren(component, element).filter((child) => !child.loaded);
+		let pendingChildren = findChildren(component, element).children.filter((child) => !child.loaded);
 		if (!pendingChildren.length) return Promise.resolve();
 		return new Promise((resolve) => {
 			const check = () => {
-				const children = findChildren(component, element);
+				const { children, targets } = findChildren(component, element);
 				pendingChildren = pendingChildren.filter((child) => {
 					if (child.loaded) return false;
 					if (children.includes(child)) return true;
@@ -696,18 +705,10 @@
 				}
 				observer.disconnect();
 				if (pendingChildren.length) {
-					const targets = /* @__PURE__ */ new Set([element]);
-					if (component.renderRoot instanceof ShadowRoot) targets.add(component);
-					for (const target of targets) {
-						observer.observe(target, {
-							childList: true,
-							subtree: true
-						});
-						for (const slot of [target, ...target.querySelectorAll("slot")]) {
-							if (!(slot instanceof HTMLSlotElement)) continue;
-							for (const assigned of slot.assignedElements({ flatten: true })) targets.add(assigned);
-						}
-					}
+					for (const target of targets) observer.observe(target, {
+						childList: true,
+						subtree: true
+					});
 					return;
 				}
 				element.removeEventListener("slotchange", check);
@@ -1712,7 +1713,7 @@
 		* @returns {Component[]} The child components rendered within this component.
 		*/
 		get childComponents() {
-			return findChildren(this, this.#rootElement);
+			return findChildren(this, this.#rootElement).children;
 		}
 		/**
 		* Determines whether the component has entered its connection lifecycle.
