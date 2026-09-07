@@ -1,4 +1,5 @@
 import { expect, test } from '#test';
+import { mockComponents } from '../../support/utils.js';
 
 test.describe('Component assets', () => {
     test('resolves component assets without changing rendered URLs', async ({ page }) => {
@@ -205,6 +206,86 @@ test.describe('Component assets', () => {
 
         await expect(page.locator('[x\\:component="x-order"]')).toHaveCount(1);
         expect(await page.evaluate(() => window._scriptOrder)).toEqual(['first', 'second']);
+    });
+
+    test.describe('Shared assets', () => {
+        test('loads shared script sources only once', async ({ page }) => {
+            let sharedScriptRequests = 0;
+
+            await page.route('**/shared.js', async (route) => {
+                sharedScriptRequests += 1;
+                await route.fulfill({
+                    status: 200,
+                    contentType: 'text/javascript',
+                    body: `
+                        window._sharedLoaded++;
+                    `,
+                });
+            });
+
+            await mockComponents(page, {
+                'x-a': `
+                    <script src="http://test.local/shared.js"></script>
+                    <div></div>
+                `,
+                'x-b': `
+                    <script src="http://test.local/shared.js"></script>
+                    <div></div>
+                `,
+            });
+
+            await page.evaluate(() => {
+                window._sharedLoaded = 0;
+                window.Component.bootstrap({ baseUrl: 'http://test.local/components' });
+                document.body.innerHTML = '<x-a></x-a><x-b></x-b>';
+            });
+
+            await expect(page.locator('[x\\:component="x-a"]')).toHaveCount(1);
+            await expect(page.locator('[x\\:component="x-b"]')).toHaveCount(1);
+
+            await page.waitForFunction(() => window._sharedLoaded === 1);
+            expect(sharedScriptRequests).toBe(1);
+        });
+
+        test('loads shared stylesheets only once', async ({ page }) => {
+            let sharedStylesheetRequests = 0;
+
+            await page.route('**/shared.css', async (route) => {
+                sharedStylesheetRequests += 1;
+                await route.fulfill({
+                    status: 200,
+                    contentType: 'text/css',
+                    body: `
+                        .shared { color: red; }
+                    `,
+                });
+            });
+
+            await mockComponents(page, {
+                'x-a': `
+                    <link rel="stylesheet" href="http://test.local/shared.css">
+                    <div></div>
+                `,
+                'x-b': `
+                    <link rel="stylesheet" href="http://test.local/shared.css">
+                    <div></div>
+                `,
+            });
+
+            await page.evaluate(() => {
+                window.Component.bootstrap({ baseUrl: 'http://test.local/components' });
+                document.body.innerHTML = '<x-a></x-a><x-b></x-b>';
+            });
+
+            await expect(page.locator('[x\\:component="x-a"]')).toHaveCount(1);
+            await expect(page.locator('[x\\:component="x-b"]')).toHaveCount(1);
+
+            await page.waitForFunction(() => {
+                return document.head.querySelectorAll('link[rel="stylesheet"][href="http://test.local/shared.css"]').length === 1;
+            });
+
+            expect(sharedStylesheetRequests).toBe(1);
+        });
     });
 
     test('waits for and deduplicates non-empty stylesheets', async ({ page }) => {

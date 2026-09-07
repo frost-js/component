@@ -268,6 +268,55 @@ test.describe('Component conditionals', () => {
     });
 
     test.describe('Nested components and blocks', () => {
+        test('processes nested blocks inside conditional branches', async ({ page }) => {
+            await defineComponent(page, 'x-child', 'XChild', '<div class="item"></div>');
+            await defineComponent(
+                page,
+                'x-parent',
+                'XParent',
+                '<div><div x:if="show"><x-child x:each="items" x:id="id"></x-child></div></div>',
+            );
+            await page.setContent('<x-parent show="true" items="[{ id: 1 }, { id: 2 }]"></x-parent>');
+
+            await expect(page.locator('[x\\:component="x-parent"] .item')).toHaveCount(2);
+
+            await updateState(page, 'x-parent', { show: false });
+            await expect(page.locator('[x\\:component="x-parent"] .item')).toHaveCount(0);
+
+            await updateState(page, 'x-parent', { show: true, items: [{ id: 3 }] });
+            await expect(page.locator('[x\\:component="x-parent"] .item')).toHaveCount(1);
+        });
+
+        test('handles loops inside conditionals inside loops', async ({ page }) => {
+            await defineComponent(page, 'x-item', 'XItem', '<div class="item">{name}</div>');
+            await defineComponent(
+                page,
+                'x-group',
+                'XGroup',
+                '<div><div x:if="show"><x-item x:each="items" x:id="id"></x-item></div></div>',
+            );
+            await defineComponent(
+                page,
+                'x-parent',
+                'XParent',
+                '<div><x-group x:each="groups" x:id="id"></x-group></div>',
+            );
+            await page.setContent('<x-parent groups="[{ id: 1, show: true, items: [{ id: 1, name: \'a\' }] }]"></x-parent>');
+
+            await expect(page.locator('[x\\:component="x-parent"] .item')).toHaveCount(1);
+
+            await updateState(page, 'x-parent', { groups: [{ id: 1, show: false, items: [{ id: 1, name: 'a' }] }] });
+            await expect(page.locator('[x\\:component="x-parent"] .item')).toHaveCount(0);
+
+            await updateState(page, 'x-parent', {
+                groups: [
+                    { id: 1, show: true, items: [{ id: 2, name: 'b' }, { id: 3, name: 'c' }] },
+                    { id: 2, show: true, items: [{ id: 4, name: 'd' }] },
+                ],
+            });
+            await expect(page.locator('[x\\:component="x-parent"] .item')).toHaveCount(3);
+        });
+
         test('toggles the current conditional root after a nested component is defined late', async ({ page }) => {
             const errors = [];
             page.on('pageerror', (error) => errors.push(error.message));
@@ -344,55 +393,6 @@ test.describe('Component conditionals', () => {
             await updateState(page, 'x-parent', { show: false });
             await expect(page.locator('article')).toHaveCount(0);
             expect(errors).toEqual([]);
-        });
-
-        test('processes nested blocks inside conditional branches', async ({ page }) => {
-            await defineComponent(page, 'x-child', 'XChild', '<div class="item"></div>');
-            await defineComponent(
-                page,
-                'x-parent',
-                'XParent',
-                '<div><div x:if="show"><x-child x:each="items" x:id="id"></x-child></div></div>',
-            );
-            await page.setContent('<x-parent show="true" items="[{ id: 1 }, { id: 2 }]"></x-parent>');
-
-            await expect(page.locator('[x\\:component="x-parent"] .item')).toHaveCount(2);
-
-            await updateState(page, 'x-parent', { show: false });
-            await expect(page.locator('[x\\:component="x-parent"] .item')).toHaveCount(0);
-
-            await updateState(page, 'x-parent', { show: true, items: [{ id: 3 }] });
-            await expect(page.locator('[x\\:component="x-parent"] .item')).toHaveCount(1);
-        });
-
-        test('handles loops inside conditionals inside loops', async ({ page }) => {
-            await defineComponent(page, 'x-item', 'XItem', '<div class="item">{name}</div>');
-            await defineComponent(
-                page,
-                'x-group',
-                'XGroup',
-                '<div><div x:if="show"><x-item x:each="items" x:id="id"></x-item></div></div>',
-            );
-            await defineComponent(
-                page,
-                'x-parent',
-                'XParent',
-                '<div><x-group x:each="groups" x:id="id"></x-group></div>',
-            );
-            await page.setContent('<x-parent groups="[{ id: 1, show: true, items: [{ id: 1, name: \'a\' }] }]"></x-parent>');
-
-            await expect(page.locator('[x\\:component="x-parent"] .item')).toHaveCount(1);
-
-            await updateState(page, 'x-parent', { groups: [{ id: 1, show: false, items: [{ id: 1, name: 'a' }] }] });
-            await expect(page.locator('[x\\:component="x-parent"] .item')).toHaveCount(0);
-
-            await updateState(page, 'x-parent', {
-                groups: [
-                    { id: 1, show: true, items: [{ id: 2, name: 'b' }, { id: 3, name: 'c' }] },
-                    { id: 2, show: true, items: [{ id: 4, name: 'd' }] },
-                ],
-            });
-            await expect(page.locator('[x\\:component="x-parent"] .item')).toHaveCount(3);
         });
 
         test('skips binding inside initialized child components on conditional reattach', async ({ page }) => {

@@ -90,6 +90,25 @@ test.describe('Shadow component slots', () => {
         expect(result.defaultText).toBe('body');
     });
 
+    test('distinguishes native slots from SVG elements with the same local name', async ({ page }) => {
+        await defineComponent(page, 'x-slots', 'XSlots', '<div><svg><slot></slot></svg><slot></slot></div>');
+        await page.evaluate(() => {
+            window.XSlots.shadowMode = 'open';
+            document.body.innerHTML = '<x-slots><span>content</span></x-slots>';
+        });
+        await page.waitForFunction(() => document.querySelector('x-slots').loaded);
+
+        const result = await page.evaluate(() => {
+            const host = document.querySelector('x-slots');
+            return {
+                children: host.childComponents.length,
+                content: host.renderRoot.querySelector('div > slot').assignedElements()[0].textContent,
+                svgSlot: host.renderRoot.querySelector('svg > slot') instanceof SVGElement,
+            };
+        });
+        expect(result).toEqual({ children: 0, content: 'content', svgSlot: true });
+    });
+
     test('supports slot forwarding in shadow mode', async ({ page }) => {
         await mockComponents(page, {
             'x-parent': `
@@ -450,23 +469,4 @@ test.describe('Shadow component slots', () => {
             });
         }
     }
-
-    test('distinguishes native slots from SVG elements with the same local name', async ({ page }) => {
-        await defineComponent(page, 'x-slots', 'XSlots', '<div><svg><slot></slot></svg><slot></slot></div>');
-        await page.evaluate(() => {
-            window.XSlots.shadowMode = 'open';
-            document.body.innerHTML = '<x-slots><span>content</span></x-slots>';
-        });
-        await page.waitForFunction(() => document.querySelector('x-slots').loaded);
-
-        const result = await page.evaluate(() => {
-            const host = document.querySelector('x-slots');
-            return {
-                children: host.childComponents.length,
-                content: host.renderRoot.querySelector('div > slot').assignedElements()[0].textContent,
-                svgSlot: host.renderRoot.querySelector('svg > slot') instanceof SVGElement,
-            };
-        });
-        expect(result).toEqual({ children: 0, content: 'content', svgSlot: true });
-    });
 });
