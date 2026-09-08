@@ -1,5 +1,5 @@
 import { expect, test } from '#test';
-import { attachMethod, defineComponent, flushTasks, mockComponents, updateState, waitForComponent } from '../support/utils.js';
+import { attachMethod, defineComponent, flushTasks, mockComponents, mountComponent, updateState, waitForComponent } from '../support/utils.js';
 
 test.describe('Suspense component', () => {
     test.describe('Fallback and loading', () => {
@@ -156,19 +156,18 @@ test.describe('Suspense component', () => {
             await page.evaluate(() => {
                 window._pending = [];
                 window.Component.bootstrap();
-                document.body.innerHTML = `
+            });
+            const component = await mountComponent(page, `
                     <x-suspense>
                         <template slot="fallback">
                             <div id="fallback">loading</div>
                         </template>
                         <x-delay></x-delay>
                     </x-suspense>
-                `;
-            });
+                `);
 
             await page.waitForFunction(() => window._pending.length === 1);
-            await page.evaluate(() => {
-                const suspense = document.querySelector('[x\\:component="x-suspense"]')[window.Component.componentSymbol];
+            await component.evaluate((suspense) => {
                 suspense.getSlot().assign(document.createElement('x-delay'));
             });
             await page.waitForFunction(() => window._pending.length === 2);
@@ -316,7 +315,7 @@ test.describe('Suspense component', () => {
                     window._cancel = document.querySelector('#cancel');
                     window._resolveLoad();
                 });
-                await waitForComponent(page, 'x-parent');
+                await waitForComponent(page, await page.evaluateHandle(() => window._parent));
                 await expect(page.locator('#cancel')).toHaveCount(0);
                 await expect(page.locator('#child')).toBeVisible();
                 await page.evaluate(() => {
@@ -345,8 +344,8 @@ test.describe('Suspense component', () => {
                 </div>
             `);
             await page.evaluate(() => window.Component.bootstrap());
-            await page.setContent('<x-parent count="1"></x-parent>');
-            await waitForComponent(page, 'x-parent');
+            const component = await mountComponent(page, '<x-parent count="1"></x-parent>');
+            await waitForComponent(page, component);
 
             const parent = page.locator('#parent');
             const input = page.locator('input');
@@ -358,17 +357,17 @@ test.describe('Suspense component', () => {
             await input.fill('Edited text');
             await input.evaluate((element) => element.setSelectionRange(1, 4));
 
-            await updateState(page, 'x-parent', { count: 2 });
+            await updateState(page, component, { count: 2 });
             await expect(input).toBeFocused();
             expect(await input.evaluate((element) => [element.selectionStart, element.selectionEnd])).toEqual([1, 4]);
 
             for (const count of [3, 4]) {
-                await updateState(page, 'x-parent', { count: 0 });
+                await updateState(page, component, { count: 0 });
                 await expect(parent).toHaveText('Empty');
                 await expect(input).toHaveCount(0);
                 await expect(page.locator('#content')).toHaveCount(0);
 
-                await updateState(page, 'x-parent', { count });
+                await updateState(page, component, { count });
                 await expect(parent).toHaveText('Before ready After');
                 await expect(parent.locator(':scope > #content')).toBeVisible();
                 await expect(input).toHaveValue('Edited text');
@@ -399,25 +398,25 @@ test.describe('Suspense component', () => {
                 </div>
             `);
             await page.evaluate(() => window.Component.bootstrap());
-            await page.setContent('<x-parent show="true"></x-parent>');
+            const parent = await mountComponent(page, '<x-parent show="true"></x-parent>');
 
             await page.waitForFunction(() => window._resolveLoad);
             await expect(page.locator('#fallback')).toBeVisible();
             await expect(page.locator('#child')).toBeHidden();
 
-            await updateState(page, 'x-parent', { show: false });
+            await updateState(page, parent, { show: false });
             await expect(page.locator('#parent')).toBeEmpty();
             await page.evaluate(() => window._resolveLoad());
             await page.waitForFunction(() => window._child.loaded);
             await flushTasks(page);
             await expect(page.locator('#parent')).toBeEmpty();
 
-            await updateState(page, 'x-parent', { show: true });
-            await waitForComponent(page, 'x-parent');
+            await updateState(page, parent, { show: true });
+            await waitForComponent(page, parent);
             await expect(page.locator('#parent > #child')).toBeVisible();
             await expect(page.locator('#parent > #content')).toBeVisible();
             await expect(page.locator('#fallback')).toHaveCount(0);
-            expect(await page.locator('#child').evaluate((element) => element[window.Component.componentSymbol] === window._child)).toBe(true);
+            expect(await page.locator('#child').evaluate((element) => element === window._child.element)).toBe(true);
             expect(errors).toEqual([]);
         });
 
@@ -436,8 +435,8 @@ test.describe('Suspense component', () => {
                 </div>
             `);
             await page.evaluate(() => window.Component.bootstrap());
-            await page.setContent('<x-parent items="[{ id: 1 }, { id: 2 }]"></x-parent>');
-            await waitForComponent(page, 'x-parent');
+            const parent = await mountComponent(page, '<x-parent items="[{ id: 1 }, { id: 2 }]"></x-parent>');
+            await waitForComponent(page, parent);
             await expect(page.locator('#parent > .content')).toHaveCount(2);
             await page.evaluate(() => {
                 window._rows = [...document.querySelectorAll('.content')];
@@ -447,25 +446,25 @@ test.describe('Suspense component', () => {
             await inputs.nth(0).fill('First');
             await inputs.nth(1).fill('Second');
             await inputs.nth(1).evaluate((element) => element.setSelectionRange(1, 4));
-            await updateState(page, 'x-parent', { items: [{ id: 1 }, { id: 2 }] });
+            await updateState(page, parent, { items: [{ id: 1 }, { id: 2 }] });
             await expect(inputs.nth(1)).toBeFocused();
             expect(await inputs.nth(1).evaluate((element) => [element.selectionStart, element.selectionEnd])).toEqual([1, 4]);
             await expect(page.locator('.fallback')).toHaveCount(0);
 
-            await updateState(page, 'x-parent', { items: [{ id: 2 }, { id: 1 }] });
+            await updateState(page, parent, { items: [{ id: 2 }, { id: 1 }] });
             await expect(inputs.nth(0)).toHaveValue('Second');
             await expect(inputs.nth(1)).toHaveValue('First');
             expect(await page.locator('.content').evaluateAll((elements) => elements.map((element) => window._rows.indexOf(element))))
                 .toEqual([1, 0]);
 
-            await updateState(page, 'x-parent', { items: [{ id: 1 }] });
+            await updateState(page, parent, { items: [{ id: 1 }] });
             await expect(page.locator('#parent')).toHaveText('Before ready After');
             await expect(inputs).toHaveCount(1);
             await expect(inputs).toHaveValue('First');
 
-            await updateState(page, 'x-parent', { items: [] });
+            await updateState(page, parent, { items: [] });
             await expect(page.locator('#parent')).toBeEmpty();
-            await updateState(page, 'x-parent', { items: [{ id: 1 }] });
+            await updateState(page, parent, { items: [{ id: 1 }] });
             await expect(page.locator('#parent > .content')).toHaveCount(1);
             await expect(page.locator('#parent')).toHaveText('Before ready After');
             await expect(inputs).toHaveCount(1);

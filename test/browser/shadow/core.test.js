@@ -1,5 +1,5 @@
 import { expect, test } from '#test';
-import { defineComponent, mockComponents } from '../../support/utils.js';
+import { defineComponent, mockComponents, mountComponent } from '../../support/utils.js';
 
 test.describe('Shadow components', () => {
     test.describe('Shadow roots', () => {
@@ -123,13 +123,12 @@ test.describe('Shadow components', () => {
 
             await page.evaluate(() => {
                 window.Component.bootstrap({ baseUrl: 'http://test.local/components' });
-                document.body.innerHTML = '<x-nested></x-nested>';
             });
+            const component = await mountComponent(page, '<x-nested></x-nested>');
 
-            await page.waitForFunction(() => {
-                const root = document.querySelector('[x\\:component="x-nested"]');
-                return root && root[window.Component.componentSymbol] && root[window.Component.componentSymbol].loaded === true;
-            });
+            await page.waitForFunction((component) => {
+                return component.loaded === true;
+            }, component);
 
             await expect(page.locator('x-nested')).toHaveCount(0);
             await expect(page.locator('[x\\:component="x-nested"]')).toHaveCount(1);

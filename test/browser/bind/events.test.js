@@ -1,5 +1,5 @@
 import { expect, test } from '#test';
-import { attachMethod, defineComponent, waitForComponent } from '../../support/utils.js';
+import { attachMethod, defineComponent, mountComponent, waitForComponent } from '../../support/utils.js';
 
 test.describe('Component event bindings', () => {
     test.describe('Handlers', () => {
@@ -9,18 +9,15 @@ test.describe('Component event bindings', () => {
                 this.state.clicked = true;
             });
 
-            await page.setContent('<x-component></x-component>');
-            await waitForComponent(page, 'x-component');
+            const component = await mountComponent(page, '<x-component></x-component>');
+            await waitForComponent(page, component);
 
             await page.evaluate(() => {
                 const root = document.querySelector('[x\\:component="x-component"]');
                 root.dispatchEvent(new Event('click'));
             });
 
-            const clicked = await page.evaluate(() => {
-                const root = document.querySelector('[x\\:component="x-component"]');
-                return root[window.Component.componentSymbol].state.clicked;
-            });
+            const clicked = await component.evaluate((component) => component.state.clicked);
 
             expect(clicked).toBe(true);
         });
@@ -28,13 +25,13 @@ test.describe('Component event bindings', () => {
         test('binds anonymous function handlers', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<button @click="() => { this.state.count = (this.state.count || 0) + 1; }"></button>');
 
-            await page.setContent('<x-component></x-component>');
-            await waitForComponent(page, 'x-component');
+            const component = await mountComponent(page, '<x-component></x-component>');
+            await waitForComponent(page, component);
 
-            const count = await page.evaluate(() => {
+            const count = await component.evaluate((component) => {
                 const root = document.querySelector('[x\\:component="x-component"]');
                 root.dispatchEvent(new Event('click'));
-                return root[window.Component.componentSymbol].state.count;
+                return component.state.count;
             });
 
             expect(count).toBe(1);
@@ -43,12 +40,12 @@ test.describe('Component event bindings', () => {
         test('binds component this for async normal function handlers', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<button @click="async function(event) { await Promise.resolve(); this.state.eventType = event.type; }"></button>');
 
-            await page.setContent('<x-component></x-component>');
-            await waitForComponent(page, 'x-component');
+            const component = await mountComponent(page, '<x-component></x-component>');
+            await waitForComponent(page, component);
 
             const root = page.locator('[x\\:component="x-component"]');
             await root.click();
-            await expect.poll(() => root.evaluate((element) => element[window.Component.componentSymbol].state.eventType)).toBe('click');
+            await expect.poll(() => component.evaluate((element) => element.state.eventType)).toBe('click');
         });
 
         test('evaluates function-valued handler expressions once during binding', async ({ page }) => {
@@ -56,19 +53,19 @@ test.describe('Component event bindings', () => {
                 window._handlerCreations = 0;
             });
             await defineComponent(page, 'x-component', 'XComponent', '<button @click="(window._handlerCreations++, (event) => { this.state.count++; this.state.eventType = event.type; })"></button>');
-            await page.setContent('<x-component count="0"></x-component>');
-            await waitForComponent(page, 'x-component');
+            const component = await mountComponent(page, '<x-component count="0"></x-component>');
+            await waitForComponent(page, component);
 
             const root = page.locator('[x\\:component="x-component"]');
             expect(await page.evaluate(() => window._handlerCreations)).toBe(1);
-            expect(await root.evaluate((element) => element[window.Component.componentSymbol].state.count)).toBe(0);
+            expect(await component.evaluate((element) => element.state.count)).toBe(0);
 
             await root.click();
             await root.click();
 
-            expect(await root.evaluate((element) => ({
-                count: element[window.Component.componentSymbol].state.count,
-                eventType: element[window.Component.componentSymbol].state.eventType,
+            expect(await component.evaluate((element) => ({
+                count: element.state.count,
+                eventType: element.state.eventType,
             }))).toEqual({ count: 2, eventType: 'click' });
             expect(await page.evaluate(() => window._handlerCreations)).toBe(1);
         });
@@ -76,8 +73,8 @@ test.describe('Component event bindings', () => {
         test('handles empty event handlers as no-ops', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<button @click></button>');
 
-            await page.setContent('<x-component></x-component>');
-            await waitForComponent(page, 'x-component');
+            const component = await mountComponent(page, '<x-component></x-component>');
+            await waitForComponent(page, component);
 
             await page.evaluate(() => {
                 const root = document.querySelector('[x\\:component="x-component"]');
@@ -90,10 +87,10 @@ test.describe('Component event bindings', () => {
         test('throws when event handler is a bare expression', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<button @click="this.state.count = 1"></button>');
             const errorPromise = page.waitForEvent('pageerror');
-            await page.setContent('<x-component></x-component>');
+            const component = await mountComponent(page, '<x-component></x-component>');
             const error = await errorPromise;
             expect(error.message).toContain('must be a component method, function expression, or braced statement body');
-            expect(await page.locator('[x\\:component="x-component"]').evaluate((element) => element[window.Component.componentSymbol].state.count)).toBe(1);
+            expect(await component.evaluate((element) => element.state.count)).toBe(1);
         });
 
         for (const [name, template] of [
@@ -117,14 +114,14 @@ test.describe('Component event bindings', () => {
                 this.state.defaultPrevented = event.defaultPrevented;
             });
 
-            await page.setContent('<x-component></x-component>');
-            await waitForComponent(page, 'x-component');
+            const component = await mountComponent(page, '<x-component></x-component>');
+            await waitForComponent(page, component);
 
-            const defaultPrevented = await page.evaluate(() => {
+            const defaultPrevented = await component.evaluate((component) => {
                 const root = document.querySelector('[x\\:component="x-component"]');
                 const clickEvent = new Event('click', { bubbles: true, cancelable: true });
                 root.dispatchEvent(clickEvent);
-                return root[window.Component.componentSymbol].state.defaultPrevented;
+                return component.state.defaultPrevented;
             });
 
             expect(defaultPrevented).toBe(true);
@@ -136,10 +133,15 @@ test.describe('Component event bindings', () => {
                 this.state.clicked = true;
             });
 
-            await page.setContent('<div id="wrap"><x-component></x-component></div>');
-            await waitForComponent(page, 'x-component');
+            await page.setContent('<div id="wrap"></div>');
+            const component = await page.evaluateHandle(() => {
+                const component = document.createElement('x-component');
+                document.querySelector('#wrap').append(component);
+                return component;
+            });
+            await waitForComponent(page, component);
 
-            const result = await page.evaluate(() => {
+            const result = await component.evaluate((component) => {
                 const wrap = document.querySelector('#wrap');
                 const root = document.querySelector('[x\\:component="x-component"]');
                 let bubbled = false;
@@ -151,7 +153,7 @@ test.describe('Component event bindings', () => {
 
                 return {
                     bubbled,
-                    clicked: root[window.Component.componentSymbol].state.clicked,
+                    clicked: component.state.clicked,
                 };
             });
 
@@ -165,14 +167,14 @@ test.describe('Component event bindings', () => {
                 this.state.clicked = (this.state.clicked || 0) + 1;
             });
 
-            await page.setContent('<x-component></x-component>');
-            await waitForComponent(page, 'x-component');
+            const component = await mountComponent(page, '<x-component></x-component>');
+            await waitForComponent(page, component);
 
-            const clicked = await page.evaluate(() => {
+            const clicked = await component.evaluate((component) => {
                 const root = document.querySelector('[x\\:component="x-component"]');
                 root.dispatchEvent(new Event('click', { bubbles: true, cancelable: true }));
                 root.dispatchEvent(new Event('click', { bubbles: true, cancelable: true }));
-                return root[window.Component.componentSymbol].state.clicked;
+                return component.state.clicked;
             });
 
             expect(clicked).toBe(1);
@@ -184,8 +186,8 @@ test.describe('Component event bindings', () => {
                 this.state.clicked = (this.state.clicked || 0) + 1;
             });
 
-            await page.setContent('<x-component></x-component>');
-            await waitForComponent(page, 'x-component');
+            const component = await mountComponent(page, '<x-component></x-component>');
+            await waitForComponent(page, component);
 
             await page.evaluate(() => {
                 const root = document.querySelector('[x\\:component="x-component"]');
@@ -194,10 +196,7 @@ test.describe('Component event bindings', () => {
                 root.dispatchEvent(new Event('click', { bubbles: true }));
             });
 
-            const clicked = await page.evaluate(() => {
-                const root = document.querySelector('[x\\:component="x-component"]');
-                return root[window.Component.componentSymbol].state.clicked;
-            });
+            const clicked = await component.evaluate((component) => component.state.clicked);
 
             expect(clicked).toBe(1);
         });
@@ -208,14 +207,14 @@ test.describe('Component event bindings', () => {
                 this.state.eventPhase = event.eventPhase;
             });
 
-            await page.setContent('<x-component></x-component>');
-            await waitForComponent(page, 'x-component');
+            const component = await mountComponent(page, '<x-component></x-component>');
+            await waitForComponent(page, component);
 
-            const eventPhase = await page.evaluate(() => {
+            const eventPhase = await component.evaluate((component) => {
                 const root = document.querySelector('[x\\:component="x-component"]');
                 const inner = root.querySelector('#inner');
                 inner.dispatchEvent(new Event('click', { bubbles: true }));
-                return root[window.Component.componentSymbol].state.eventPhase;
+                return component.state.eventPhase;
             });
 
             expect(eventPhase).toBe(1);
@@ -228,14 +227,14 @@ test.describe('Component event bindings', () => {
                 this.state.defaultPrevented = event.defaultPrevented;
             });
 
-            await page.setContent('<x-component></x-component>');
-            await waitForComponent(page, 'x-component');
+            const component = await mountComponent(page, '<x-component></x-component>');
+            await waitForComponent(page, component);
 
-            const defaultPrevented = await page.evaluate(() => {
+            const defaultPrevented = await component.evaluate((component) => {
                 const root = document.querySelector('[x\\:component="x-component"]');
                 const clickEvent = new Event('click', { bubbles: true, cancelable: true });
                 root.dispatchEvent(clickEvent);
-                return root[window.Component.componentSymbol].state.defaultPrevented;
+                return component.state.defaultPrevented;
             });
 
             expect(defaultPrevented).toBe(false);
@@ -257,7 +256,7 @@ test.describe('Component event bindings', () => {
                 this.state.itemId = event.target.state.id;
             });
 
-            await page.setContent('<x-parent></x-parent>');
+            const parent = await mountComponent(page, '<x-parent></x-parent>');
 
             await page.waitForFunction(() => {
                 const item = document.querySelector('[x\\:component="x-parent"] x-list x-item');
@@ -269,14 +268,11 @@ test.describe('Component event bindings', () => {
                 item.renderRoot.querySelector('#remove').click();
             });
 
-            const result = await page.evaluate(() => {
-                const parent = document.querySelector('[x\\:component="x-parent"]');
-                return {
-                    currentTargetTag: parent[window.Component.componentSymbol].state.currentTargetTag,
-                    targetTag: parent[window.Component.componentSymbol].state.targetTag,
-                    itemId: parent[window.Component.componentSymbol].state.itemId,
-                };
-            });
+            const result = await parent.evaluate((parent) => ({
+                currentTargetTag: parent.state.currentTargetTag,
+                targetTag: parent.state.targetTag,
+                itemId: parent.state.itemId,
+            }));
 
             expect(result).toEqual({
                 currentTargetTag: 'x-list',
@@ -296,7 +292,7 @@ test.describe('Component event bindings', () => {
                 this.state.targetTag = event.target.localName;
             });
 
-            await page.setContent('<x-parent></x-parent>');
+            const parent = await mountComponent(page, '<x-parent></x-parent>');
 
             await page.waitForFunction(() => {
                 const child = document.querySelector('[x\\:component="x-parent"] x-child');
@@ -308,13 +304,10 @@ test.describe('Component event bindings', () => {
                 child.renderRoot.querySelector('#save').click();
             });
 
-            const result = await page.evaluate(() => {
-                const parent = document.querySelector('[x\\:component="x-parent"]');
-                return {
-                    currentTargetTag: parent[window.Component.componentSymbol].state.currentTargetTag,
-                    targetTag: parent[window.Component.componentSymbol].state.targetTag,
-                };
-            });
+            const result = await parent.evaluate((parent) => ({
+                currentTargetTag: parent.state.currentTargetTag,
+                targetTag: parent.state.targetTag,
+            }));
 
             expect(result).toEqual({
                 currentTargetTag: 'x-child',
@@ -435,16 +428,16 @@ test.describe('Component event bindings', () => {
                 this.state.savedId = event.detail.id;
             });
 
-            await page.setContent('<x-parent></x-parent>');
+            const parent = await mountComponent(page, '<x-parent></x-parent>');
 
             const button = page.locator('[x\\:component="x-child"]');
             await expect(button).toBeVisible();
             await expect(page.locator('x-child')).toHaveCount(0);
             await button.click();
 
-            const result = await page.locator('[x\\:component="x-parent"]').evaluate((element) => ({
-                currentTargetId: element[window.Component.componentSymbol].state.currentTargetId,
-                savedId: element[window.Component.componentSymbol].state.savedId,
+            const result = await parent.evaluate((element) => ({
+                currentTargetId: element.state.currentTargetId,
+                savedId: element.state.savedId,
             }));
 
             expect(result).toEqual({
@@ -475,7 +468,7 @@ test.describe('Component event bindings', () => {
                 });
 
                 await defineComponent(page, 'x-leaf', 'XLeaf', '<button id="save" @click="{ this.dispatch(\'save\') }">save</button>');
-                await waitForComponent(page, 'x-parent');
+                await waitForComponent(page, await page.evaluateHandle(() => window._parent));
                 await page.getByRole('button', { name: 'save' }).click();
                 await page.getByRole('button', { name: 'save' }).click();
 
@@ -514,7 +507,7 @@ test.describe('Component event bindings', () => {
             expect(await page.evaluate(() => window._parent.state.calls)).toBe(1);
 
             await defineComponent(page, 'x-leaf', 'XLeaf', '<button @click="{ this.dispatch(\'save\') }">save</button>');
-            await waitForComponent(page, 'x-parent');
+            await waitForComponent(page, await page.evaluateHandle(() => window._parent));
             await page.getByRole('button', { name: 'save' }).click();
             await page.getByRole('button', { name: 'save' }).click();
 
@@ -524,8 +517,8 @@ test.describe('Component event bindings', () => {
         for (const once of [false, true]) {
             test(`keeps ${once ? 'once' : 'regular'} handlers across a late-defined child's connection and initialization`, async ({ page }) => {
                 await defineComponent(page, 'x-parent', 'XParent', `<div><x-child @save${once ? '.once' : ''}="{ this.state.phases = [...this.state.phases, event.detail.phase]; }"></x-child></div>`);
-                await page.setContent('<x-parent phases="[]"></x-parent>');
-                await page.waitForFunction(() => document.querySelector('[x\\:component="x-parent"]')?.[window.Component.componentSymbol].initialized);
+                const parent = await mountComponent(page, '<x-parent phases="[]"></x-parent>');
+                await page.waitForFunction((parent) => parent.initialized, parent);
                 await page.evaluate(() => {
                     class XChild extends window.Component {
                         static get template() {
@@ -543,10 +536,10 @@ test.describe('Component event bindings', () => {
 
                     customElements.define('x-child', XChild);
                 });
-                await waitForComponent(page, 'x-parent');
+                await waitForComponent(page, parent);
                 await page.getByRole('button').click();
 
-                expect(await page.evaluate(() => document.querySelector('[x\\:component="x-parent"]')[window.Component.componentSymbol].state.phases))
+                expect(await parent.evaluate((parent) => parent.state.phases))
                     .toEqual(once ? ['connected'] : ['connected', 'initialize', 'click']);
             });
         }
@@ -558,8 +551,8 @@ test.describe('Component event bindings', () => {
                 window._lifecycle.push([event.type, event.currentTarget.localName]);
             });
             await page.evaluate(() => window._lifecycle = []);
-            await page.setContent('<x-parent></x-parent>');
-            await waitForComponent(page, 'x-parent');
+            const parent = await mountComponent(page, '<x-parent></x-parent>');
+            await waitForComponent(page, parent);
 
             expect(await page.evaluate(() => window._lifecycle)).toEqual([
                 ['connected', 'x-child'],
@@ -572,10 +565,10 @@ test.describe('Component event bindings', () => {
         test('cleans up event handlers and root-change subscriptions when a loop row is removed', async ({ page }) => {
             await defineComponent(page, 'x-row', 'XRow', '<x-late></x-late>');
             await defineComponent(page, 'x-parent', 'XParent', '<div><x-row x:each="items" @save="{ this.state.calls++; }"></x-row></div>');
-            await page.setContent('<x-parent items="[{ id: 1 }]" calls="0"></x-parent>');
-            await page.waitForFunction(() => document.querySelector('x-late')?.[window.Component.componentSymbol]?.initialized);
-            await page.evaluate(() => {
-                window._parent = document.querySelector('[x\\:component="x-parent"]')[window.Component.componentSymbol];
+            const parent = await mountComponent(page, '<x-parent items="[{ id: 1 }]" calls="0"></x-parent>');
+            await page.waitForFunction((parent) => parent.childComponents[0]?.initialized, parent);
+            await parent.evaluate((parent) => {
+                window._parent = parent;
                 window._late = document.querySelector('x-late');
                 window._parent.state.items = [];
             });

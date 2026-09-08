@@ -1,16 +1,16 @@
 import { expect, test } from '#test';
-import { defineComponent, waitForComponent } from '../support/utils.js';
+import { defineComponent, mountComponent, waitForComponent } from '../support/utils.js';
 
 test.describe('Component constraints', () => {
     test.describe('Keys', () => {
         test('assigns x:key elements to component properties', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<div><span id="title" x:key="a"></span></div>');
-            await page.setContent('<x-component></x-component>');
-            await waitForComponent(page, 'x-component');
+            const component = await mountComponent(page, '<x-component></x-component>');
+            await waitForComponent(page, component);
 
-            const match = await page.evaluate(() => {
+            const match = await component.evaluate((component) => {
                 const root = document.querySelector('[x\\:component="x-component"]');
-                return root[window.Component.componentSymbol].a === root.querySelector('#title');
+                return component.a === root.querySelector('#title');
             });
 
             expect(match).toBe(true);
@@ -18,13 +18,13 @@ test.describe('Component constraints', () => {
 
         test('assigns root x:key elements to component properties', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<div id="root" x:key="root"></div>');
-            await page.setContent('<x-component></x-component>');
-            await waitForComponent(page, 'x-component');
+            const component = await mountComponent(page, '<x-component></x-component>');
+            await waitForComponent(page, component);
 
-            const result = await page.evaluate(() => {
+            const result = await component.evaluate((component) => {
                 const root = document.querySelector('[x\\:component="x-component"]');
                 return {
-                    matches: root[window.Component.componentSymbol].root === root,
+                    matches: component.root === root,
                     hasKeyAttribute: root.hasAttribute('x:key'),
                 };
             });
@@ -37,8 +37,8 @@ test.describe('Component constraints', () => {
 
         test('ignores empty x:key values and removes x:key attributes', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<div><span id="a" x:key=""></span><span id="b" x:key="b"></span></div>');
-            await page.setContent('<x-component></x-component>');
-            await waitForComponent(page, 'x-component');
+            const component = await mountComponent(page, '<x-component></x-component>');
+            await waitForComponent(page, component);
 
             const keys = await page.evaluate(() => {
                 const root = document.querySelector('[x\\:component="x-component"]');

@@ -1,4 +1,5 @@
-/** @import { Page } from '@playwright/test'; */
+/** @import { JSHandle, Page } from '@playwright/test'; */
+/** @import Component from '../../src/component.js'; */
 
 /**
  * Serves component templates and returns 404 for unknown component names.
@@ -64,39 +65,46 @@ export async function attachMethod(page, className, methodName, fn) {
 }
 
 /**
+ * Mounts component markup and retains the original instance before root replacement.
+ * @param {Page} page The Playwright page.
+ * @param {string} markup The markup containing a single component host.
+ * @returns {Promise<JSHandle<Component>>} A handle to the component instance.
+ */
+export async function mountComponent(page, markup) {
+    return await page.evaluateHandle((markup) => {
+        const template = document.createElement('template');
+        template.innerHTML = markup;
+        const component = template.content.firstElementChild;
+        document.body.append(template.content);
+        return component;
+    }, markup);
+}
+
+/**
  * Waits for a component to finish loading.
  * @param {Page} page The Playwright page.
- * @param {string} tagName The component tag name.
+ * @param {JSHandle<Component>} component The retained component instance.
  * @returns {Promise<void>} A promise that resolves when the component is loaded.
  */
-export async function waitForComponent(page, tagName) {
-    await page.waitForFunction((tagName) => {
-        const root = document.querySelector(`[x\\:component="${tagName}"]`);
-        return root?.[window.Component.componentSymbol]?.loaded === true;
-    }, tagName);
+export async function waitForComponent(page, component) {
+    await page.waitForFunction((component) => component.loaded === true, component);
 }
 
 /**
  * Updates state on a component in a browser page.
  * @param {Page} page The Playwright page.
- * @param {string} tagName The component tag name.
+ * @param {JSHandle<Component>} component The retained component instance.
  * @param {Record<string, *>} newState The state values to apply.
  * @returns {Promise<void>} A promise that resolves once the state is updated.
  */
-export async function updateState(page, tagName, newState) {
-    await page.waitForFunction((tagName) => {
-        const el = document.querySelector(`[x\\:component="${tagName}"]`);
-        return el && el[window.Component.componentSymbol] && el[window.Component.componentSymbol].initialized === true;
-    }, tagName);
+export async function updateState(page, component, newState) {
+    await page.waitForFunction((component) => component.initialized === true, component);
 
-    return await page.evaluate(({ tagName, newState }) => {
-        const el = document.querySelector(`[x\\:component="${tagName}"]`);
-        const component = el[window.Component.componentSymbol];
-
+    await component.evaluate((component, newState) => {
         for (const [key, value] of Object.entries(newState)) {
             component.state[key] = value;
         }
-    }, { tagName, newState });
+    }, newState);
 }
 
 /**

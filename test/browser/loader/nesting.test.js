@@ -1,5 +1,5 @@
 import { expect, test } from '#test';
-import { mockComponents } from '../../support/utils.js';
+import { mockComponents, mountComponent } from '../../support/utils.js';
 
 test.describe('Nested component autoload', () => {
     test.describe('Templates and slots', () => {
@@ -124,13 +124,10 @@ test.describe('Nested component autoload', () => {
             await page.evaluate(() => {
                 window._events = [];
                 window.Component.bootstrap({ baseUrl: 'http://test.local/components' });
-                document.body.innerHTML = '<x-parent><x-child slot="body"></x-child></x-parent>';
             });
+            const parent = await mountComponent(page, '<x-parent><x-child slot="body"></x-child></x-parent>');
 
-            await page.waitForFunction(() => {
-                const child = document.querySelector('[x\\:component="x-child"]');
-                return child && child[window.Component.componentSymbol] && child[window.Component.componentSymbol].loaded === true && window._events.length === 3;
-            });
+            await page.waitForFunction((parent) => parent.loaded && window._events.length === 3, parent);
 
             const events = await page.evaluate(() => window._events || []);
             expect(events).toEqual(['parent:initialized', 'child:connected', 'child:initialized']);
@@ -163,13 +160,12 @@ test.describe('Nested component autoload', () => {
             await page.evaluate(() => {
                 window._events = [];
                 window.Component.bootstrap({ baseUrl: 'http://test.local/components' });
-                document.body.innerHTML = '<x-parent></x-parent>';
             });
+            const parent = await mountComponent(page, '<x-parent></x-parent>');
 
-            await page.waitForFunction(() => {
-                const root = document.querySelector('[x\\:component="x-parent"]');
-                return root && root[window.Component.componentSymbol] && root[window.Component.componentSymbol].loaded === true;
-            });
+            await page.waitForFunction((parent) => {
+                return parent.loaded === true;
+            }, parent);
 
             const events = await page.evaluate(() => window._events || []);
             expect(events).toEqual(['child:loaded', 'parent:loaded']);
@@ -202,13 +198,12 @@ test.describe('Nested component autoload', () => {
             await page.evaluate(() => {
                 window._events = [];
                 window.Component.bootstrap({ baseUrl: 'http://test.local/components' });
-                document.body.innerHTML = '<x-parent><x-child slot="body"></x-child></x-parent>';
             });
+            const parent = await mountComponent(page, '<x-parent><x-child slot="body"></x-child></x-parent>');
 
-            await page.waitForFunction(() => {
-                const root = document.querySelector('[x\\:component="x-parent"]');
-                return root && root[window.Component.componentSymbol] && root[window.Component.componentSymbol].loaded === true;
-            });
+            await page.waitForFunction((parent) => {
+                return parent.loaded === true;
+            }, parent);
 
             const events = await page.evaluate(() => window._events || []);
             expect(events).toEqual(['child:loaded', 'parent:loaded']);
@@ -257,13 +252,12 @@ test.describe('Nested component autoload', () => {
             await page.evaluate(() => {
                 window._events = [];
                 window.Component.bootstrap({ baseUrl: 'http://test.local/components' });
-                document.body.innerHTML = '<x-parent show="false"></x-parent>';
             });
+            const parent = await mountComponent(page, '<x-parent show="false"></x-parent>');
 
-            await page.waitForFunction(() => {
-                const root = document.querySelector('[x\\:component="x-parent"]');
-                return root && root[window.Component.componentSymbol] && root[window.Component.componentSymbol].loaded === true;
-            });
+            await page.waitForFunction((parent) => {
+                return parent.loaded === true;
+            }, parent);
 
             const events = await page.evaluate(() => window._events || []);
             expect(events).toEqual([]);

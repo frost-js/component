@@ -1,5 +1,5 @@
 import { expect, test } from '#test';
-import { attachMethod, defineComponent, flushTasks, updateState, waitForComponent } from '../../support/utils.js';
+import { attachMethod, defineComponent, flushTasks, mountComponent, updateState, waitForComponent } from '../../support/utils.js';
 
 test.describe('Component property bindings', () => {
     test.describe('Element properties', () => {
@@ -9,8 +9,8 @@ test.describe('Component property bindings', () => {
                 this.state.service = { name: 'api' };
             });
 
-            await page.setContent('<x-parent></x-parent>');
-            await waitForComponent(page, 'x-parent');
+            const parent = await mountComponent(page, '<x-parent></x-parent>');
+            await waitForComponent(page, parent);
 
             const serviceName = await page.evaluate(() => {
                 const target = document.querySelector('[x\\:component="x-parent"] #target');
@@ -39,16 +39,16 @@ test.describe('Component property bindings', () => {
                 this.state.payload = { name: 'api' };
             });
 
-            await page.setContent('<x-parent></x-parent>');
+            const parent = await mountComponent(page, '<x-parent></x-parent>');
 
             const target = page.locator('[x\\:component="x-parent"] #target');
             await expect.poll(() => target.evaluate((element) => element.payload?.name)).toBe('api');
 
             for (const value of [null, undefined]) {
-                await updateState(page, 'x-parent', { payload: value });
+                await updateState(page, parent, { payload: value });
                 await expect.poll(() => target.evaluate((element) => element.payload)).toBe(value);
 
-                await updateState(page, 'x-parent', { payload: { name: 'api' } });
+                await updateState(page, parent, { payload: { name: 'api' } });
                 await expect.poll(() => target.evaluate((element) => element.payload?.name)).toBe('api');
             }
         });
@@ -56,8 +56,8 @@ test.describe('Component property bindings', () => {
         test('assigns null and undefined to cleared element properties', async ({ page }) => {
             await defineComponent(page, 'x-parent', 'XParent', '<div><button id="target" .token="token"></button></div>');
 
-            await page.setContent('<x-parent token="abc"></x-parent>');
-            await waitForComponent(page, 'x-parent');
+            const parent = await mountComponent(page, '<x-parent token="abc"></x-parent>');
+            await waitForComponent(page, parent);
 
             const initial = await page.evaluate(() => {
                 const target = document.querySelector('[x\\:component="x-parent"] #target');
@@ -68,7 +68,7 @@ test.describe('Component property bindings', () => {
 
             const target = page.locator('[x\\:component="x-parent"] #target');
             for (const value of [null, undefined]) {
-                await updateState(page, 'x-parent', { token: value });
+                await updateState(page, parent, { token: value });
                 await expect.poll(() => target.evaluate((element) => ({
                     present: Object.hasOwn(element, 'token'),
                     value: element.token,
@@ -89,11 +89,11 @@ test.describe('Component property bindings', () => {
         for (const value of ['latest', null, undefined]) {
             test(`assigns ${String(value)} after definition and keeps updates reactive`, async ({ page }) => {
                 await defineComponent(page, 'x-parent', 'XParent', '<div><data-target .payload="payload"></data-target></div>');
-                await page.setContent('<x-parent payload="initial"></x-parent>');
-                await waitForComponent(page, 'x-parent');
+                const parent = await mountComponent(page, '<x-parent payload="initial"></x-parent>');
+                await waitForComponent(page, parent);
 
                 const target = page.locator('data-target');
-                await updateState(page, 'x-parent', { payload: value });
+                await updateState(page, parent, { payload: value });
                 await flushTasks(page);
                 expect(await target.evaluate((element) => Object.hasOwn(element, 'payload'))).toBe(false);
 
@@ -121,7 +121,7 @@ test.describe('Component property bindings', () => {
                 expect(await target.evaluate((element) => element.payload)).toBe(value);
 
                 for (const next of ['updated', null, undefined]) {
-                    await updateState(page, 'x-parent', { payload: next });
+                    await updateState(page, parent, { payload: next });
                     calls.push(next);
                     await expect.poll(() => page.evaluate(() => window._setterCalls)).toStrictEqual(calls);
                     expect(await target.evaluate((element) => element.payload)).toBe(next);
@@ -131,8 +131,8 @@ test.describe('Component property bindings', () => {
 
         test('preserves own accessors installed by a late-defined element', async ({ page }) => {
             await defineComponent(page, 'x-parent', 'XParent', '<div><data-target .payload="payload"></data-target></div>');
-            await page.setContent('<x-parent payload="initial"></x-parent>');
-            await waitForComponent(page, 'x-parent');
+            const parent = await mountComponent(page, '<x-parent payload="initial"></x-parent>');
+            await waitForComponent(page, parent);
 
             await page.evaluate(() => {
                 window._ownCalls = [];
@@ -156,7 +156,7 @@ test.describe('Component property bindings', () => {
             await flushTasks(page);
 
             expect(await page.evaluate(() => window._ownCalls)).toEqual(['initial']);
-            await updateState(page, 'x-parent', { payload: 'updated' });
+            await updateState(page, parent, { payload: 'updated' });
             await expect.poll(() => page.evaluate(() => window._ownCalls)).toEqual(['initial', 'updated']);
             expect(await page.evaluate(() => window._prototypeCalls)).toEqual([]);
         });
@@ -171,12 +171,12 @@ test.describe('Component property bindings', () => {
                     </section>
                 </div>
             `);
-            await page.setContent('<x-parent show="true" user="{ name: \'initial\' }"></x-parent>');
-            await waitForComponent(page, 'x-parent');
+            const parent = await mountComponent(page, '<x-parent show="true" user="{ name: \'initial\' }"></x-parent>');
+            await waitForComponent(page, parent);
             await page.evaluate(() => {
                 window._target = document.querySelector('data-target');
             });
-            await updateState(page, 'x-parent', { user: null, show: false });
+            await updateState(page, parent, { user: null, show: false });
             await expect(page.locator('data-target')).toHaveCount(0);
 
             await page.evaluate(() => {
@@ -192,7 +192,7 @@ test.describe('Component property bindings', () => {
             expect(await page.evaluate(() => window._setterCalls)).toEqual([]);
             expect(await page.evaluate(() => window._target instanceof customElements.get('data-target'))).toBe(true);
 
-            await updateState(page, 'x-parent', { user: { name: 'updated' }, show: true });
+            await updateState(page, parent, { user: { name: 'updated' }, show: true });
             await expect(page.locator('data-target')).toHaveCount(1);
             await expect.poll(() => page.evaluate(() => window._setterCalls)).toEqual(['updated']);
             expect(errors).toEqual([]);
@@ -205,12 +205,12 @@ test.describe('Component property bindings', () => {
                     <x-row x:each="items"><data-target .payload="payload"></data-target></x-row>
                 </div>
             `);
-            await page.setContent('<x-parent items="[{ id: 1 }, { id: 2 }]" payload="initial"></x-parent>');
-            await waitForComponent(page, 'x-parent');
+            const parent = await mountComponent(page, '<x-parent items="[{ id: 1 }, { id: 2 }]" payload="initial"></x-parent>');
+            await waitForComponent(page, parent);
             await page.evaluate(() => {
                 window._target = document.querySelector('data-target');
             });
-            await updateState(page, 'x-parent', { items: [{ id: 2 }] });
+            await updateState(page, parent, { items: [{ id: 2 }] });
             await expect(page.locator('data-target')).toHaveCount(1);
 
             await page.evaluate(() => {
@@ -224,19 +224,19 @@ test.describe('Component property bindings', () => {
             await expect.poll(() => page.evaluate(() => window._setterCalls)).toEqual(['initial']);
             expect(await page.evaluate(() => Object.hasOwn(window._target, 'payload'))).toBe(false);
 
-            await updateState(page, 'x-parent', { payload: 'updated' });
+            await updateState(page, parent, { payload: 'updated' });
             await expect.poll(() => page.evaluate(() => window._setterCalls)).toEqual(['initial', 'updated']);
-            await updateState(page, 'x-parent', { items: [] });
+            await updateState(page, parent, { items: [] });
             await expect(page.locator('data-target')).toHaveCount(0);
-            await updateState(page, 'x-parent', { payload: 'removed' });
+            await updateState(page, parent, { payload: 'removed' });
             await flushTasks(page);
             expect(await page.evaluate(() => window._setterCalls)).toEqual(['initial', 'updated']);
         });
 
         test('does not retry binding when a custom element fails to upgrade', async ({ page }) => {
             await defineComponent(page, 'x-parent', 'XParent', '<div><data-target .payload="payload"></data-target></div>');
-            await page.setContent('<x-parent payload="initial"></x-parent>');
-            await waitForComponent(page, 'x-parent');
+            const parent = await mountComponent(page, '<x-parent payload="initial"></x-parent>');
+            await waitForComponent(page, parent);
 
             const errorPromise = page.waitForEvent('pageerror');
             await page.evaluate(() => {

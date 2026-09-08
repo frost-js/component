@@ -1,5 +1,5 @@
 import { expect, test } from '#test';
-import { attachMethod, defineComponent, mockComponents, updateState, waitForComponent } from '../support/utils.js';
+import { attachMethod, defineComponent, mockComponents, mountComponent, updateState, waitForComponent } from '../support/utils.js';
 
 const collisions = [
     'component', 'localName', 'nodeType', 'attributes', 'children', 'parentNode',
@@ -41,7 +41,8 @@ test.describe('Form named properties', () => {
                 document.body.append(window._form);
                 window.Component.bootstrap();
             });
-            await waitForComponent(page, 'x-form');
+            const component = await page.evaluateHandle(() => window._form);
+            await waitForComponent(page, component);
 
             // Playwright's form locators also call the shadowed dispatchEvent method.
             const readForm = () => page.evaluate(() => {
@@ -58,14 +59,13 @@ test.describe('Form named properties', () => {
             await expect.poll(readForm).toMatchObject({ classes: 'initial', color: 'rgb(255, 0, 0)', inert: false });
             await expect(page.locator('[data-assigned]')).toHaveText('Assigned');
             expect(await page.evaluate(() => ({
-                symbol: typeof window.Component.componentSymbol,
-                owner: window._form.form[window.Component.componentSymbol] === window._form,
+                root: window._form.element === window._form.form,
                 namedControl: window._form.form.component instanceof HTMLInputElement,
                 label: window._form.label === document.querySelector('output'),
                 children: window._form.childComponents.length,
-            }))).toEqual({ symbol: 'symbol', owner: true, namedControl: true, label: true, children: 0 });
+            }))).toEqual({ root: true, namedControl: true, label: true, children: 0 });
 
-            await updateState(page, 'x-form', {
+            await updateState(page, component, {
                 classes: { updated: true },
                 styles: 'color: blue;',
                 value: 'updated',
@@ -89,7 +89,7 @@ test.describe('Form named properties', () => {
             await page.evaluate(() => document.body.append(window._form.form));
             await expect.poll(() => page.evaluate(() => window._form.mounted)).toBe(true);
 
-            await updateState(page, 'x-form', { classes: null, styles: null, value: null, inert: true });
+            await updateState(page, component, { classes: null, styles: null, value: null, inert: true });
             await expect.poll(readForm).toMatchObject({ inert: true, value: null, classes: '', style: '' });
             expect(errors).toEqual([]);
         });
@@ -107,7 +107,7 @@ test.describe('Form named properties', () => {
             document.body.append(window._parent);
             window.Component.bootstrap();
         }, controls('name'));
-        await waitForComponent(page, 'x-parent');
+        await waitForComponent(page, await page.evaluateHandle(() => window._parent));
         expect(await page.evaluate(() => ({
             parent: window._child.parentComponent === window._parent,
             child: window._parent.childComponents[0] === window._child,
@@ -139,18 +139,18 @@ test.describe('Form named properties', () => {
         await attachMethod(page, 'XList', 'initialize', function() {
             this.state.set({ show: true, label: 'First', items: [{ id: 1, label: 'One' }, { id: 2, label: 'Two' }] });
         });
-        await page.setContent('<x-list></x-list>');
-        await waitForComponent(page, 'x-list');
+        const component = await mountComponent(page, '<x-list></x-list>');
+        await waitForComponent(page, component);
         await expect(page.locator('output')).toHaveText('First');
         await expect(page.locator('.row')).toHaveText(['One', 'Two']);
-        await updateState(page, 'x-list', {
+        await updateState(page, component, {
             show: false,
             label: 'Changed',
             items: [{ id: 2, label: 'Second' }, { id: 1, label: 'First' }],
         });
         await expect(page.locator('output')).toHaveText('Alternative');
         await expect(page.locator('.row')).toHaveText(['Second', 'First']);
-        await updateState(page, 'x-list', { show: true, items: [] });
+        await updateState(page, component, { show: true, items: [] });
         await expect(page.locator('output')).toHaveText('Changed');
         await expect(page.locator('.row')).toHaveCount(0);
         expect(errors).toEqual([]);
@@ -164,9 +164,11 @@ test.describe('Form named properties', () => {
             'x-loaded-child': '<span>Loaded</span>',
         });
         await page.setContent(`<form>${controls('name')}<x-loaded-child></x-loaded-child></form><x-loaded-form>Form</x-loaded-form>`);
+        const form = await page.locator('x-loaded-form').elementHandle();
+        const child = await page.locator('x-loaded-child').elementHandle();
         await page.evaluate(() => window.Component.bootstrap({ baseUrl: 'https://example.test/components' }));
-        await waitForComponent(page, 'x-loaded-form');
-        await waitForComponent(page, 'x-loaded-child');
+        await waitForComponent(page, form);
+        await waitForComponent(page, child);
         await expect(page.locator('[x\\:component="x-loaded-child"]')).toHaveText(['Loaded', 'Loaded']);
         expect(await page.evaluate(() => document.querySelector('[x\\:component="x-loaded-form"]').textContent)).toBe('FormLoaded');
         expect(errors).toEqual([]);

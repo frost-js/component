@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test } from '#test';
-import { attachMethod, defineComponent, flushTasks, mockComponents } from '../support/utils.js';
+import { attachMethod, defineComponent, flushTasks, mockComponents, mountComponent } from '../support/utils.js';
 
 const distPath = path.resolve('dist/frost-component.js');
 
@@ -93,17 +93,16 @@ test.describe('Component observers', () => {
 
             await page.evaluate(() => {
                 window.Component.bootstrap();
-                document.body.appendChild(document.createElement('x-component'));
             });
+            const component = await mountComponent(page, '<x-component></x-component>');
 
-            await page.waitForFunction(() => {
-                const root = document.querySelector('[x\\:component="x-component"]');
-                return root && root[window.Component.componentSymbol] && root[window.Component.componentSymbol].mounted === true;
-            });
+            await page.waitForFunction((component) => {
+                return component.mounted === true;
+            }, component);
 
-            await page.evaluate(() => {
+            await component.evaluate((component) => {
                 const root = document.querySelector('[x\\:component="x-component"]');
-                window._component = root[window.Component.componentSymbol];
+                window._component = component;
                 root.remove();
             });
 
@@ -128,8 +127,8 @@ test.describe('Component observers', () => {
                 };
             });
 
-            await page.setContent('<x-light></x-light>');
-            await page.waitForFunction(() => document.querySelector('#light')?.[window.Component.componentSymbol]?.loaded === true);
+            const component = await mountComponent(page, '<x-light></x-light>');
+            await page.waitForFunction((component) => component.loaded === true, component);
 
             await page.evaluate(() => {
                 window.Component.bootstrap();
@@ -226,7 +225,7 @@ test.describe('Component observers', () => {
                 document.body.appendChild(window._parent);
             });
 
-            await page.waitForFunction(() => document.querySelector('span')?.[window.Component.componentSymbol]?.loaded === true);
+            await page.waitForFunction(() => window._parent.loaded === true);
 
             await page.evaluate(() => {
                 window._parent.state.label = 'second';
@@ -267,7 +266,7 @@ test.describe('Component observers', () => {
             await defineComponent(page, 'x-child', 'XChild', '<div id="leaf"></div>');
             await defineComponent(page, 'x-parent', 'XParent', '<x-child></x-child>');
 
-            await page.evaluate(() => {
+            const parent = await page.evaluateHandle(() => {
                 window._ioCallback = null;
                 window.IntersectionObserver = class {
                     constructor(callback) {
@@ -291,18 +290,18 @@ test.describe('Component observers', () => {
                 }, { once: true });
 
                 document.body.appendChild(parent);
+                return parent;
             });
 
-            await page.waitForFunction(() => document.querySelector('#leaf')?.[window.Component.componentSymbol]?.loaded === true);
+            await page.waitForFunction((parent) => parent.loaded === true, parent);
             expect(await page.evaluate(() => window._mountEvents)).toEqual([
                 'parent:mounted',
                 'child:mounted',
             ]);
 
-            await page.evaluate(() => {
+            await parent.evaluate((parent) => {
                 const leaf = document.querySelector('#leaf');
-                const child = leaf[window.Component.componentSymbol];
-                const parent = child[window.Component.componentSymbol];
+                const child = parent.rootElement;
 
                 window._ownershipEvents = [];
                 child.addEventListener('invisible', () => window._ownershipEvents.push('child:invisible'));
@@ -441,19 +440,19 @@ test.describe('Component observers', () => {
 
             await page.evaluate(() => {
                 window.Component.bootstrap();
-                document.body.appendChild(document.createElement('x-component'));
             });
+            const component = await mountComponent(page, '<x-component></x-component>');
 
             await page.waitForFunction(() => window._ioTargets.length === 1);
 
-            const result = await page.evaluate(() => {
+            const result = await component.evaluate((component) => {
                 const root = document.querySelector('[x\\:component="x-component"]');
 
                 window._ioCallback([{ target: root, isIntersecting: false }]);
 
                 const events = [];
-                root[window.Component.componentSymbol].addEventListener('visible', () => events.push('visible'));
-                root[window.Component.componentSymbol].addEventListener('invisible', () => events.push('invisible'));
+                component.addEventListener('visible', () => events.push('visible'));
+                component.addEventListener('invisible', () => events.push('invisible'));
 
                 window._ioCallback([{ target: root, isIntersecting: true }]);
                 window._ioCallback([{ target: root, isIntersecting: false }]);
@@ -466,32 +465,22 @@ test.describe('Component observers', () => {
 
         test('flushes pending effects after visible event', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<div></div>');
-            await page.setContent('<x-component></x-component>');
+            const component = await mountComponent(page, '<x-component></x-component>');
 
-            await page.waitForFunction(() => {
-                const root = document.querySelector('[x\\:component="x-component"]');
-                return root &&
-                    root[window.Component.componentSymbol] &&
-                    root[window.Component.componentSymbol].initialized === true &&
-                    root[window.Component.componentSymbol].mounted === true;
-            });
+            await page.waitForFunction((component) => {
+                return component.initialized === true &&
+                    component.mounted === true;
+            }, component);
 
-            await page.evaluate(() => {
-                const root = document.querySelector('[x\\:component="x-component"]');
-                const component = root[window.Component.componentSymbol];
+            await component.evaluate((component) => {
                 component.dispatchEvent(new Event('invisible'));
             });
 
-            await page.waitForFunction(() => {
-                const root = document.querySelector('[x\\:component="x-component"]');
-                const component = root[window.Component.componentSymbol];
+            await page.waitForFunction((component) => {
                 return !component.visible;
-            });
+            }, component);
 
-            const stateBeforeVisible = await page.evaluate(() => {
-                const root = document.querySelector('[x\\:component="x-component"]');
-                const component = root[window.Component.componentSymbol];
-
+            const stateBeforeVisible = await component.evaluate((component) => {
                 component.state.count = 0;
                 component._runs = 0;
                 component.effect(() => {
@@ -507,21 +496,15 @@ test.describe('Component observers', () => {
 
             expect(stateBeforeVisible.runs).toBe(0);
 
-            await page.evaluate(() => {
-                const root = document.querySelector('[x\\:component="x-component"]');
-                const component = root[window.Component.componentSymbol];
+            await component.evaluate((component) => {
                 component.dispatchEvent(new Event('visible'));
             });
 
-            await page.waitForFunction(() => {
-                const root = document.querySelector('[x\\:component="x-component"]');
-                const component = root[window.Component.componentSymbol];
+            await page.waitForFunction((component) => {
                 return component.visible;
-            });
+            }, component);
 
-            const stateAfterVisible = await page.evaluate(() => {
-                const root = document.querySelector('[x\\:component="x-component"]');
-                const component = root[window.Component.componentSymbol];
+            const stateAfterVisible = await component.evaluate((component) => {
                 return {
                     runs: component._runs,
                 };

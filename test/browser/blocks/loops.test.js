@@ -1,5 +1,5 @@
 import { expect, test } from '#test';
-import { defineComponent, updateState, waitForComponent } from '../../support/utils.js';
+import { defineComponent, mountComponent, updateState, waitForComponent } from '../../support/utils.js';
 
 test.describe('Component loops', () => {
     test.describe('Rendering and updates', () => {
@@ -37,22 +37,22 @@ test.describe('Component loops', () => {
         test('updates x:each loops when items change', async ({ page }) => {
             await defineComponent(page, 'x-child', 'XChild', '<div class="item"></div>');
             await defineComponent(page, 'x-parent', 'XParent', '<div><x-child x:each="items" x:id="id"></x-child></div>');
-            await page.setContent('<x-parent items="[{ id: 1 }, { id: 2 }]"></x-parent>');
+            const parent = await mountComponent(page, '<x-parent items="[{ id: 1 }, { id: 2 }]"></x-parent>');
 
             const root = page.locator('[x\\:component="x-parent"]');
-            await updateState(page, 'x-parent', { items: [{ id: 2 }] });
+            await updateState(page, parent, { items: [{ id: 2 }] });
             await expect(root.locator('.item')).toHaveCount(1);
         });
 
         test('reuses initialized loop components and updates state', async ({ page }) => {
             await defineComponent(page, 'x-child', 'XChild', '<div class="item">{name}</div>');
             await defineComponent(page, 'x-parent', 'XParent', '<div><x-child x:each="items" x:id="id"></x-child></div>');
-            await page.setContent('<x-parent items="[{ id: 1, name: \'a\' }]"></x-parent>');
+            const parent = await mountComponent(page, '<x-parent items="[{ id: 1, name: \'a\' }]"></x-parent>');
 
             const item = page.locator('[x\\:component="x-parent"] .item');
             await expect(item).toHaveText('a');
 
-            await updateState(page, 'x-parent', { items: [{ id: 1, name: 'b' }] });
+            await updateState(page, parent, { items: [{ id: 1, name: 'b' }] });
             await expect(page.locator('[x\\:component="x-parent"] .item')).toHaveCount(1);
             await expect(item).toHaveText('b');
         });
@@ -60,31 +60,31 @@ test.describe('Component loops', () => {
         test('reorders x:each components by moving existing nodes', async ({ page }) => {
             await defineComponent(page, 'x-child', 'XChild', '<div class="item"></div>');
             await defineComponent(page, 'x-parent', 'XParent', '<div><x-child x:each="items" x:id="id"></x-child></div>');
-            await page.setContent('<x-parent items="[{ id: 1 }, { id: 2 }]"></x-parent>');
+            const parent = await mountComponent(page, '<x-parent items="[{ id: 1 }, { id: 2 }]"></x-parent>');
 
             await page.waitForFunction(() => {
                 return document.querySelectorAll('[x\\:component="x-parent"] .item').length === 2;
             });
 
-            const initialMarkers = await page.evaluate(() => {
-                const items = [...document.querySelectorAll('[x\\:component="x-parent"] .item')];
+            const initialMarkers = await parent.evaluate((parent) => {
+                const items = parent.childComponents;
                 const markers = {};
-                for (const el of items) {
-                    const id = el[window.Component.componentSymbol]?.state?.id;
+                for (const component of items) {
+                    const id = component.state.id;
                     const marker = `m-${Math.random().toString(36).slice(2)}`;
-                    el._marker = marker;
+                    component.element._marker = marker;
                     markers[id] = marker;
                 }
                 return markers;
             });
 
-            await updateState(page, 'x-parent', { items: [{ id: 2 }, { id: 1 }] });
+            await updateState(page, parent, { items: [{ id: 2 }, { id: 1 }] });
 
-            const reordered = await page.evaluate(() => {
-                return [...document.querySelectorAll('[x\\:component="x-parent"] .item')]
-                    .map((el) => ({
-                        id: el[window.Component.componentSymbol]?.state?.id,
-                        marker: el._marker,
+            const reordered = await parent.evaluate((parent) => {
+                return parent.childComponents
+                    .map((component) => ({
+                        id: component.state.id,
+                        marker: component.element._marker,
                     }));
             });
 
@@ -96,13 +96,13 @@ test.describe('Component loops', () => {
         test('removes initialized loop components when items are removed', async ({ page }) => {
             await defineComponent(page, 'x-child', 'XChild', '<div class="item"></div>');
             await defineComponent(page, 'x-parent', 'XParent', '<div><x-child x:each="items" x:id="id"></x-child></div>');
-            await page.setContent('<x-parent items="[{ id: 1 }, { id: 2 }]"></x-parent>');
+            const parent = await mountComponent(page, '<x-parent items="[{ id: 1 }, { id: 2 }]"></x-parent>');
 
             await page.waitForFunction(() => {
                 return document.querySelectorAll('[x\\:component="x-parent"] .item').length === 2;
             });
 
-            await updateState(page, 'x-parent', { items: [] });
+            await updateState(page, parent, { items: [] });
             await expect(page.locator('[x\\:component="x-parent"] .item')).toHaveCount(0);
         });
 
@@ -110,10 +110,10 @@ test.describe('Component loops', () => {
             test(`preserves input focus when updating ${count} loop rows without reordering`, async ({ page }) => {
                 await defineComponent(page, 'x-child', 'XChild', '<div class="item"><input value="Draft text"><span>{name}</span></div>');
                 await defineComponent(page, 'x-parent', 'XParent', '<div><x-child x:each="items" x:id="id"></x-child></div>');
-                await page.setContent('<x-parent items="[]"></x-parent>');
+                const parent = await mountComponent(page, '<x-parent items="[]"></x-parent>');
 
                 const items = Array.from({ length: count }, (_, index) => ({ id: index, name: `Item ${index}` }));
-                await updateState(page, 'x-parent', { items });
+                await updateState(page, parent, { items });
 
                 const rows = page.locator('[x\\:component="x-parent"] .item');
                 await expect(rows.locator('span')).toHaveText(items.map((item) => item.name));
@@ -124,7 +124,7 @@ test.describe('Component loops', () => {
                     await input.evaluate((element) => element.setSelectionRange(1, 4));
 
                     const updated = items.map((item) => ({ ...item, name: `Updated ${item.id} (${index})` }));
-                    await updateState(page, 'x-parent', { items: updated });
+                    await updateState(page, parent, { items: updated });
 
                     await expect(rows.locator('span')).toHaveText(updated.map((item) => item.name));
                     await expect(input).toBeFocused();
@@ -143,16 +143,17 @@ test.describe('Component loops', () => {
                 'XParent',
                 `<div><x-child local="'kept'" x:each="items" x:id="id"></x-child></div>`,
             );
-            await page.setContent(`<x-parent items="[{ id: 1, name: 'a' }]"></x-parent>`);
+            const parent = await mountComponent(page, `<x-parent items="[{ id: 1, name: 'a' }]"></x-parent>`);
 
             const item = page.locator('[x\\:component="x-parent"] .item');
             await expect(item).toHaveText('a|kept');
 
-            await updateState(page, 'x-parent', { items: [{ id: 1 }] });
+            await updateState(page, parent, { items: [{ id: 1 }] });
             await expect(item).toHaveText('|kept');
 
-            const stateWasPreserved = await item.evaluate((element) => {
-                return element[window.Component.componentSymbol].state.name === undefined && element[window.Component.componentSymbol].state.local === 'kept';
+            const stateWasPreserved = await parent.evaluate((parent) => {
+                const child = parent.childComponents[0];
+                return child.state.name === undefined && child.state.local === 'kept';
             });
             expect(stateWasPreserved).toBe(true);
         });
@@ -208,9 +209,9 @@ test.describe('Component loops', () => {
         test('supports loop identifiers that collide with object property names', async ({ page }) => {
             await defineComponent(page, 'x-child', 'XChild', '<div class="item">{id}</div>');
             await defineComponent(page, 'x-parent', 'XParent', '<div><x-child x:each="items" x:id="id"></x-child></div>');
-            await page.setContent('<x-parent items="[]"></x-parent>');
+            const parent = await mountComponent(page, '<x-parent items="[]"></x-parent>');
 
-            await updateState(page, 'x-parent', {
+            await updateState(page, parent, {
                 items: [
                     { id: 'toString' },
                     { id: '__proto__' },
@@ -275,14 +276,14 @@ test.describe('Component loops', () => {
                 await defineComponent(page, 'x-row', 'XRow', '<x-leaf></x-leaf>');
                 await defineComponent(page, 'x-parent', 'XParent', '<div><x-row x:each="items"></x-row></div>');
                 await page.evaluate(() => window.Component.bootstrap());
-                await page.setContent('<x-parent items="[{ id: 1 }, { id: 2 }]"></x-parent>');
-                await page.waitForFunction(() => {
-                    const leaves = [...document.querySelectorAll('x-leaf')];
-                    return leaves.length === 2 && leaves.every((leaf) => leaf[window.Component.componentSymbol]?.initialized);
-                });
-                await page.evaluate((change) => {
-                    window._parent = document.querySelector('[x\\:component="x-parent"]')[window.Component.componentSymbol];
-                    window._rows = [...document.querySelectorAll('x-leaf')].map((leaf) => leaf[window.Component.componentSymbol]);
+                const parent = await mountComponent(page, '<x-parent items="[{ id: 1 }, { id: 2 }]"></x-parent>');
+                await page.waitForFunction((parent) => {
+                    const rows = parent.childComponents;
+                    return rows.length === 2 && rows.every((row) => row.initialized);
+                }, parent);
+                await parent.evaluate((parent, change) => {
+                    window._parent = parent;
+                    window._rows = parent.childComponents;
                     window._updatedOnce = false;
 
                     class XLeaf extends window.Component {
@@ -305,19 +306,20 @@ test.describe('Component loops', () => {
                     customElements.define('x-leaf', XLeaf);
                 }, change);
 
-                await waitForComponent(page, 'x-parent');
+                await waitForComponent(page, parent);
                 await expect(page.locator('article')).toHaveText(change === 'removes' ? [] : ['2', '1']);
                 await expect(page.locator('x-leaf')).toHaveCount(0);
                 if (change === 'reorders') {
                     expect(await page.locator('article').evaluateAll((elements) =>
-                        elements[0][window.Component.componentSymbol].parentComponent === window._rows[1] &&
-                        elements[1][window.Component.componentSymbol].parentComponent === window._rows[0],
+                        elements[0] === window._rows[1].rootElement.element &&
+                        elements[1] === window._rows[0].rootElement.element &&
+                        window._rows.every((row) => row.rootElement.parentComponent === row),
                     )).toBe(true);
                 }
 
-                await updateState(page, 'x-parent', { items: [{ id: 1 }] });
+                await updateState(page, parent, { items: [{ id: 1 }] });
                 await expect(page.locator('article')).toHaveText(['1']);
-                await updateState(page, 'x-parent', { items: [] });
+                await updateState(page, parent, { items: [] });
                 await expect(page.locator('article')).toHaveCount(0);
                 expect(errors).toEqual([]);
             });
@@ -349,9 +351,9 @@ test.describe('Component loops', () => {
             test(name, async ({ page }) => {
                 await defineComponent(page, 'x-child', 'XChild', '<div class="item"></div>');
                 await defineComponent(page, 'x-parent', 'XParent', '<div><x-child x:each="items" x:id="id"></x-child></div>');
-                await page.setContent('<x-parent items="[]"></x-parent>');
+                const parent = await mountComponent(page, '<x-parent items="[]"></x-parent>');
                 const errorPromise = page.waitForEvent('pageerror');
-                await updateState(page, 'x-parent', { items });
+                await updateState(page, parent, { items });
                 const error = await errorPromise;
                 expect(error.message).toContain(message);
             });

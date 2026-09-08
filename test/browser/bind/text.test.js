@@ -1,5 +1,5 @@
 import { expect, test } from '#test';
-import { defineComponent, updateState } from '../../support/utils.js';
+import { defineComponent, mountComponent, updateState } from '../../support/utils.js';
 
 test.describe('Component text bindings', () => {
     test.describe('Interpolation', () => {
@@ -11,12 +11,12 @@ test.describe('Component text bindings', () => {
         ]) {
             test(name, async ({ page }) => {
                 await defineComponent(page, 'x-component', 'XComponent', template);
-                await page.setContent('<x-component count="1"></x-component>');
+                const component = await mountComponent(page, '<x-component count="1"></x-component>');
 
                 const label = page.locator('[x\\:component="x-component"] #label');
                 await expect(label).toHaveText(initial);
 
-                await updateState(page, 'x-component', { count: 2 });
+                await updateState(page, component, { count: 2 });
                 await expect(label).toHaveText(updated);
             });
         }
@@ -46,12 +46,12 @@ test.describe('Component text bindings', () => {
 
         test('ignores delimiters in nested template literals', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<div><span id="label">{{ `Outer ${`Inner }} ${this.state.count}`}` }}</span></div>');
-            await page.setContent('<x-component count="1"></x-component>');
+            const component = await mountComponent(page, '<x-component count="1"></x-component>');
 
             const label = page.locator('[x\\:component="x-component"] #label');
             await expect(label).toHaveText('Outer Inner }} 1');
 
-            await updateState(page, 'x-component', { count: 2 });
+            await updateState(page, component, { count: 2 });
             await expect(label).toHaveText('Outer Inner }} 2');
         });
     });
@@ -68,13 +68,13 @@ test.describe('Component text bindings', () => {
         ]) {
             test(`supports regex ${name} in text expressions`, async ({ page }) => {
                 await defineComponent(page, 'x-component', 'XComponent', `<div><span id="label">Result: {{ ${expression} }}; {suffix}</span></div>`);
-                await page.setContent('<x-component suffix="end"></x-component>');
-                await updateState(page, 'x-component', { label: value });
+                const component = await mountComponent(page, '<x-component suffix="end"></x-component>');
+                await updateState(page, component, { label: value });
 
                 const label = page.locator('[x\\:component="x-component"] #label');
                 await expect(label).toHaveText('Result: true; end');
 
-                await updateState(page, 'x-component', { label: 'none' });
+                await updateState(page, component, { label: 'none' });
                 await expect(label).toHaveText('Result: false; end');
             });
         }
@@ -88,12 +88,12 @@ test.describe('Component text bindings', () => {
         ]) {
             test(`supports division in text expressions: ${expression}`, async ({ page }) => {
                 await defineComponent(page, 'x-component', 'XComponent', `<div><span id="label">{{ ${expression} }}</span></div>`);
-                await page.setContent('<x-component count="8" label="}"></x-component>');
+                const component = await mountComponent(page, '<x-component count="8" label="}"></x-component>');
 
                 const label = page.locator('[x\\:component="x-component"] #label');
                 await expect(label).toHaveText('4');
 
-                await updateState(page, 'x-component', { count: 10 });
+                await updateState(page, component, { count: 10 });
                 await expect(label).toHaveText('5');
             });
         }
@@ -103,13 +103,13 @@ test.describe('Component text bindings', () => {
                 window.textRuns = 0;
             });
             await defineComponent(page, 'x-component', 'XComponent', '<div><span id="label">{{ (window.textRuns++, /}}/.test(this.state.label)) }}</span></div>');
-            await page.setContent('<x-component label="}}"></x-component>');
+            const component = await mountComponent(page, '<x-component label="}}"></x-component>');
 
             const label = page.locator('[x\\:component="x-component"] #label');
             await expect(label).toHaveText('true');
             expect(await page.evaluate(() => window.textRuns)).toBe(1);
 
-            await updateState(page, 'x-component', { label: 'none' });
+            await updateState(page, component, { label: 'none' });
             await expect(label).toHaveText('false');
             expect(await page.evaluate(() => window.textRuns)).toBe(2);
         });
@@ -118,12 +118,12 @@ test.describe('Component text bindings', () => {
     test.describe('HTML entities', () => {
         test('decodes HTML entities in expressions', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<div><span id="label">{{ this.state.count &gt; 1 ? "yes" : "no" }}</span></div>');
-            await page.setContent('<x-component count="1"></x-component>');
+            const component = await mountComponent(page, '<x-component count="1"></x-component>');
 
             const label = page.locator('[x\\:component="x-component"] #label');
             await expect(label).toHaveText('no');
 
-            await updateState(page, 'x-component', { count: 2 });
+            await updateState(page, component, { count: 2 });
             await expect(label).toHaveText('yes');
         });
 
@@ -134,13 +134,13 @@ test.describe('Component text bindings', () => {
         ]) {
             test(`preserves literal HTML entities in text expressions: ${literal}`, async ({ page }) => {
                 await defineComponent(page, 'x-component', 'XComponent', `<div><span id="label">{{ '${encoded}' + this.state.count }}</span></div>`);
-                await page.setContent('<x-component count="1"></x-component>');
+                const component = await mountComponent(page, '<x-component count="1"></x-component>');
 
                 const label = page.locator('[x\\:component="x-component"] #label');
                 await expect(label).toHaveText(`${literal}1`);
-                await expect.poll(() => label.evaluate((element) => element.parentElement[window.Component.componentSymbol].loaded)).toBe(true);
+                await expect.poll(() => component.evaluate((element) => element.loaded)).toBe(true);
 
-                await updateState(page, 'x-component', { count: 2 });
+                await updateState(page, component, { count: 2 });
                 await expect(label).toHaveText(`${literal}2`);
             });
         }

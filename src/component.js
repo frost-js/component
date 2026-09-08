@@ -32,14 +32,6 @@ export default class Component extends HTMLElement {
     #visible = false;
 
     /**
-     * Gets the symbol linking a rendered element to its owning component.
-     * @returns {symbol} The component ownership key.
-     */
-    static get componentSymbol() {
-        return componentSymbol;
-    }
-
-    /**
      * Gets the template.
      * @returns {string} The component template markup.
      */

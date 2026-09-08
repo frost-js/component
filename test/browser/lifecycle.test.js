@@ -1,5 +1,5 @@
 import { expect, test } from '#test';
-import { attachMethod, defineComponent, flushTasks, updateState, waitForComponent } from '../support/utils.js';
+import { attachMethod, defineComponent, flushTasks, mountComponent, updateState, waitForComponent } from '../support/utils.js';
 
 test.describe('Component lifecycle', () => {
     test.describe('Initialization', () => {
@@ -35,7 +35,7 @@ test.describe('Component lifecycle', () => {
             await defineComponent(page, 'x-child', 'XChild', '<div></div>');
             await defineComponent(page, 'x-parent', 'XParent', '<x-child></x-child>');
 
-            await page.evaluate(() => {
+            const parent = await page.evaluateHandle(() => {
                 window._events = [];
 
                 const parent = document.createElement('x-parent');
@@ -55,12 +55,10 @@ test.describe('Component lifecycle', () => {
                 }, { once: true });
 
                 document.body.appendChild(parent);
+                return parent;
             });
 
-            await page.waitForFunction(() => {
-                const child = document.querySelector('[x\\:component="x-child"]');
-                return child && child[window.Component.componentSymbol] && child[window.Component.componentSymbol].loaded === true;
-            });
+            await waitForComponent(page, parent);
 
             const events = await page.evaluate(() => window._events || []);
             expect(events).toEqual(['parent:initialized', 'child:initialized', 'child:loaded', 'parent:loaded']);
@@ -141,20 +139,15 @@ test.describe('Component lifecycle', () => {
         test('throws when a component is reattached after initialization', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<div></div>');
 
-            await page.evaluate(() => {
-                const el = document.createElement('x-component');
-                document.body.appendChild(el);
-            });
+            const component = await mountComponent(page, '<x-component></x-component>');
 
-            await page.waitForFunction(() => {
-                const root = document.querySelector('[x\\:component="x-component"]');
-                return root && root[window.Component.componentSymbol] && root[window.Component.componentSymbol].initialized === true;
-            });
+            await page.waitForFunction((component) => {
+                return component.initialized === true;
+            }, component);
 
             const errorPromise = page.waitForEvent('pageerror');
-            await page.evaluate(() => {
+            await component.evaluate((host) => {
                 const root = document.querySelector('[x\\:component="x-component"]');
-                const host = root[window.Component.componentSymbol];
                 const container = document.createElement('div');
                 document.body.appendChild(container);
                 container.appendChild(root);
@@ -326,7 +319,7 @@ test.describe('Component lifecycle', () => {
                 });
 
                 await page.waitForFunction(() => window._pending.length === 1);
-                await updateState(page, 'x-parent', { show: true });
+                await updateState(page, await page.evaluateHandle(() => window._parent), { show: true });
                 await page.waitForFunction(() => window._pending.length === 2);
 
                 await page.evaluate(() => window._pending[0].resolve());
@@ -339,7 +332,7 @@ test.describe('Component lifecycle', () => {
                 if (completion === 'loads') {
                     await page.evaluate(() => window._pending[1].resolve());
                 } else {
-                    await updateState(page, 'x-parent', { show: false });
+                    await updateState(page, await page.evaluateHandle(() => window._parent), { show: false });
                 }
 
                 await page.waitForFunction(() => window._parent.loaded);
@@ -429,12 +422,10 @@ test.describe('Component lifecycle', () => {
     test.describe('Effects', () => {
         test('runs effects when state changes and component is mounted', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<div></div>');
-            await page.setContent('<x-component></x-component>');
-            await waitForComponent(page, 'x-component');
+            const component = await mountComponent(page, '<x-component></x-component>');
+            await waitForComponent(page, component);
 
-            await page.evaluate(() => {
-                const root = document.querySelector('[x\\:component="x-component"]');
-                const component = root[window.Component.componentSymbol];
+            await component.evaluate((component) => {
                 component.state.count = 0;
                 component._runs = 0;
                 component.effect(() => {
@@ -444,43 +435,34 @@ test.describe('Component lifecycle', () => {
                 component.state.count = 1;
             });
 
-            const runs = await page.evaluate(() => {
-                const root = document.querySelector('[x\\:component="x-component"]');
-                return root[window.Component.componentSymbol]._runs;
-            });
+            const runs = await component.evaluate((component) => component._runs);
 
             expect(runs).toBe(2);
         });
 
         test('runs effects when waitForVisible is false', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<div></div>');
-            await page.setContent('<x-component></x-component>');
-            await waitForComponent(page, 'x-component');
+            const component = await mountComponent(page, '<x-component></x-component>');
+            await waitForComponent(page, component);
 
-            await page.evaluate(() => {
-                const root = document.querySelector('[x\\:component="x-component"]');
-                const component = root[window.Component.componentSymbol];
+            await component.evaluate((component) => {
                 component.dispatchEvent(new Event('invisible'));
                 component.effect(() => {
                     component._ran = true;
                 }, { waitForVisible: false });
             });
 
-            const ran = await page.evaluate(() => {
-                const root = document.querySelector('[x\\:component="x-component"]');
-                return root[window.Component.componentSymbol]._ran;
-            });
+            const ran = await component.evaluate((component) => component._ran);
 
             expect(ran).toBe(true);
         });
 
         test('disposes effects and cancels queued updates', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<div></div>');
-            await page.setContent('<x-component></x-component>');
-            await waitForComponent(page, 'x-component');
+            const component = await mountComponent(page, '<x-component></x-component>');
+            await waitForComponent(page, component);
 
-            await page.evaluate(() => {
-                const component = document.querySelector('[x\\:component="x-component"]')[window.Component.componentSymbol];
+            await component.evaluate((component) => {
                 component.state.count = 0;
                 window._effectValues = [];
                 const dispose = component.effect(() => window._effectValues.push(component.state.count));
@@ -489,7 +471,7 @@ test.describe('Component lifecycle', () => {
                 dispose();
             });
             await flushTasks(page);
-            await updateState(page, 'x-component', { count: 2 });
+            await updateState(page, component, { count: 2 });
             await flushTasks(page);
             expect(await page.evaluate(() => window._effectValues)).toEqual([0]);
         });
@@ -497,11 +479,10 @@ test.describe('Component lifecycle', () => {
         for (const deferred of [false, true]) {
             test(`disposes an effect with ${deferred ? 'visibility-deferred' : 'queued'} work without stopping other bindings`, async ({ page }) => {
                 await defineComponent(page, 'x-component', 'XComponent', '<div>{count}</div>');
-                await page.setContent('<x-component count="0"></x-component>');
-                await waitForComponent(page, 'x-component');
+                const component = await mountComponent(page, '<x-component count="0"></x-component>');
+                await waitForComponent(page, component);
 
-                await page.evaluate((deferred) => {
-                    const component = document.querySelector('[x\\:component="x-component"]')[window.Component.componentSymbol];
+                await component.evaluate((component, deferred) => {
                     component.dispatchEvent(new Event(deferred ? 'invisible' : 'visible'));
                     window._effectValues = [];
 
@@ -513,7 +494,7 @@ test.describe('Component lifecycle', () => {
                 }, deferred);
 
                 await expect(page.locator('[x\\:component="x-component"]')).toHaveText('1');
-                await updateState(page, 'x-component', { count: 2 });
+                await updateState(page, component, { count: 2 });
                 await expect(page.locator('[x\\:component="x-component"]')).toHaveText('2');
                 expect(await page.evaluate(() => window._effectValues)).toEqual(deferred ? [] : [0]);
             });
@@ -521,11 +502,10 @@ test.describe('Component lifecycle', () => {
 
         test('does not resume disposed effects on visibility or mount', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<div></div>');
-            await page.setContent('<x-component></x-component>');
-            await waitForComponent(page, 'x-component');
+            const component = await mountComponent(page, '<x-component></x-component>');
+            await waitForComponent(page, component);
 
-            await page.evaluate(() => {
-                const component = document.querySelector('[x\\:component="x-component"]')[window.Component.componentSymbol];
+            await component.evaluate((component) => {
                 component.state.count = 0;
                 window._effectValues = [];
                 window._disposeEffect = component.effect(() => window._effectValues.push(component.state.count));
@@ -533,8 +513,7 @@ test.describe('Component lifecycle', () => {
                 component.state.count = 1;
             });
             await flushTasks(page);
-            await page.evaluate(() => {
-                const component = document.querySelector('[x\\:component="x-component"]')[window.Component.componentSymbol];
+            await component.evaluate((component) => {
                 window._disposeEffect();
                 component.dispatchEvent(new Event('visible'));
                 component.dispatchEvent(new Event('dismounted'));
@@ -542,7 +521,7 @@ test.describe('Component lifecycle', () => {
                 dispose();
                 component.dispatchEvent(new Event('mounted'));
             });
-            await updateState(page, 'x-component', { count: 2 });
+            await updateState(page, component, { count: 2 });
             await flushTasks(page);
             expect(await page.evaluate(() => window._effectValues)).toEqual([0]);
         });

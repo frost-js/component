@@ -1,5 +1,5 @@
 import { expect, test } from '#test';
-import { defineComponent, updateState } from '../../support/utils.js';
+import { defineComponent, mountComponent, updateState } from '../../support/utils.js';
 
 test.describe('Component attribute bindings', () => {
     test.describe('Ordinary attributes', () => {
@@ -9,38 +9,38 @@ test.describe('Component attribute bindings', () => {
         ]) {
             test(name, async ({ page }) => {
                 await defineComponent(page, 'x-component', 'XComponent', template);
-                await page.setContent('<x-component title="hello"></x-component>');
+                const component = await mountComponent(page, '<x-component title="hello"></x-component>');
 
                 const box = page.locator('[x\\:component="x-component"] #box');
                 await expect(box).toHaveAttribute('title', 'hello');
 
-                await updateState(page, 'x-component', { title: 'world' });
+                await updateState(page, component, { title: 'world' });
                 await expect(box).toHaveAttribute('title', 'world');
             });
         }
 
         test('removes bound attributes when value is null', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<div><div id="box" :title="title"></div></div>');
-            await page.setContent('<x-component title="hello"></x-component>');
+            const component = await mountComponent(page, '<x-component title="hello"></x-component>');
 
             const box = page.locator('[x\\:component="x-component"] #box');
             await expect(box).toHaveAttribute('title', 'hello');
 
-            await updateState(page, 'x-component', { title: null });
+            await updateState(page, component, { title: null });
             await expect(box).not.toHaveAttribute('title');
         });
 
         test('preserves literal HTML entities in attribute expressions', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<div><div id="box" :title="{ \'&amp;apos;\' + this.state.count }" :data-symbol="{ \'&amp;amp;\' }" :data-match="{ this.state.count &gt; 1 }"></div></div>');
-            await page.setContent('<x-component count="1"></x-component>');
+            const component = await mountComponent(page, '<x-component count="1"></x-component>');
 
             const box = page.locator('[x\\:component="x-component"] #box');
             await expect(box).toHaveAttribute('title', '&apos;1');
             await expect(box).toHaveAttribute('data-symbol', '&amp;');
             await expect(box).toHaveAttribute('data-match', 'false');
-            await expect.poll(() => box.evaluate((element) => element.parentElement[window.Component.componentSymbol].loaded)).toBe(true);
+            await expect.poll(() => component.evaluate((element) => element.loaded)).toBe(true);
 
-            await updateState(page, 'x-component', { count: 2 });
+            await updateState(page, component, { count: 2 });
             await expect(box).toHaveAttribute('title', '&apos;2');
             await expect(box).toHaveAttribute('data-match', 'true');
         });
@@ -49,14 +49,14 @@ test.describe('Component attribute bindings', () => {
     test.describe('Boolean attributes', () => {
         test('handles false according to boolean and ordinary attribute semantics', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<div><input id="input" type="color" :alpha="alpha" :disabled="disabled" :data-enabled="enabled"></div>');
-            await page.setContent('<x-component alpha="true" disabled="true" enabled="false"></x-component>');
+            const component = await mountComponent(page, '<x-component alpha="true" disabled="true" enabled="false"></x-component>');
 
             const input = page.locator('[x\\:component="x-component"] #input');
             await expect(input).toHaveAttribute('alpha', '');
             await expect(input).toHaveAttribute('disabled', '');
             await expect(input).toHaveAttribute('data-enabled', 'false');
 
-            await updateState(page, 'x-component', { alpha: false, disabled: false });
+            await updateState(page, component, { alpha: false, disabled: false });
             await expect(input).not.toHaveAttribute('alpha');
             await expect(input).not.toHaveAttribute('disabled');
             await expect(input).toHaveAttribute('data-enabled', 'false');
@@ -74,49 +74,49 @@ test.describe('Component attribute bindings', () => {
 
         test('binds class attributes with object values', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<div><div id="box" :class="({ active: this.state.active })"></div></div>');
-            await page.setContent('<x-component active="true"></x-component>');
+            const component = await mountComponent(page, '<x-component active="true"></x-component>');
 
             const box = page.locator('[x\\:component="x-component"] #box');
             await expect(box).toHaveClass('active');
 
-            await updateState(page, 'x-component', { active: false });
+            await updateState(page, component, { active: false });
             await expect(box).toHaveClass('');
         });
 
         test('binds class with string values and replaces previous classes', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<div><div id="box" :class="classes"></div></div>');
-            await page.setContent(`<x-component classes="['a', 'b']"></x-component>`);
+            const component = await mountComponent(page, `<x-component classes="['a', 'b']"></x-component>`);
 
             const box = page.locator('[x\\:component="x-component"] #box');
-            await updateState(page, 'x-component', { classes: 'c' });
+            await updateState(page, component, { classes: 'c' });
             await expect(box).toHaveClass('c');
         });
 
         test('updates class bindings across array, object, and string values', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<div><div id="box" :class="classes"></div></div>');
-            await page.setContent(`<x-component classes="['a', 'b']"></x-component>`);
+            const component = await mountComponent(page, `<x-component classes="['a', 'b']"></x-component>`);
 
             const box = page.locator('[x\\:component="x-component"] #box');
             await expect(box).toHaveClass('a b');
 
-            await updateState(page, 'x-component', { classes: { c: true, d: false } });
+            await updateState(page, component, { classes: { c: true, d: false } });
             await expect(box).toHaveClass('c');
 
-            await updateState(page, 'x-component', { classes: 'e' });
+            await updateState(page, component, { classes: 'e' });
             await expect(box).toHaveClass('e');
         });
 
         test('splits multi-token class strings, array entries, and object keys', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<div><div id="box" :class="classes"></div></div>');
-            await page.setContent('<x-component classes="btn active"></x-component>');
+            const component = await mountComponent(page, '<x-component classes="btn active"></x-component>');
 
             const box = page.locator('[x\\:component="x-component"] #box');
             await expect(box).toHaveClass('btn active');
 
-            await updateState(page, 'x-component', { classes: ['card selected', 'wide'] });
+            await updateState(page, component, { classes: ['card selected', 'wide'] });
             await expect(box).toHaveClass('card selected wide');
 
-            await updateState(page, 'x-component', { classes: { 'menu open': true, 'hidden': false } });
+            await updateState(page, component, { classes: { 'menu open': true, 'hidden': false } });
             await expect(box).toHaveClass('menu open');
         });
     });
@@ -124,59 +124,59 @@ test.describe('Component attribute bindings', () => {
     test.describe('Styles', () => {
         test('binds style attributes with object values', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<div><div id="box" :style="({ color: this.state.color })"></div></div>');
-            await page.setContent('<x-component color="red"></x-component>');
+            const component = await mountComponent(page, '<x-component color="red"></x-component>');
 
             const box = page.locator('[x\\:component="x-component"] #box');
             await expect(box).toHaveCSS('color', 'rgb(255, 0, 0)');
 
-            await updateState(page, 'x-component', { color: 'blue' });
+            await updateState(page, component, { color: 'blue' });
             await expect(box).toHaveCSS('color', 'rgb(0, 0, 255)');
         });
 
         test('binds style with string values and clears previous styles', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<div><div id="box" :style="style"></div></div>');
-            await page.setContent('<x-component style="color: red;"></x-component>');
+            const component = await mountComponent(page, '<x-component style="color: red;"></x-component>');
 
             const box = page.locator('[x\\:component="x-component"] #box');
             await expect(box).toHaveCSS('color', 'rgb(255, 0, 0)');
 
-            await updateState(page, 'x-component', { style: 'color: blue;' });
+            await updateState(page, component, { style: 'color: blue;' });
             await expect(box).toHaveCSS('color', 'rgb(0, 0, 255)');
         });
 
         test('updates style bindings across object and string values', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<div><div id="box" :style="styles"></div></div>');
-            await page.setContent('<x-component styles="{ color: \'red\', backgroundColor: \'blue\' }"></x-component>');
+            const component = await mountComponent(page, '<x-component styles="{ color: \'red\', backgroundColor: \'blue\' }"></x-component>');
 
             const box = page.locator('[x\\:component="x-component"] #box');
             await expect(box).toHaveCSS('color', 'rgb(255, 0, 0)');
             await expect(box).toHaveCSS('background-color', 'rgb(0, 0, 255)');
 
-            await updateState(page, 'x-component', { styles: 'color: green; background-color: blue;' });
+            await updateState(page, component, { styles: 'color: green; background-color: blue;' });
             await expect(box).toHaveCSS('color', 'rgb(0, 128, 0)');
             await expect(box).toHaveCSS('background-color', 'rgb(0, 0, 255)');
 
-            await updateState(page, 'x-component', { styles: { color: 'black' } });
+            await updateState(page, component, { styles: { color: 'black' } });
             await expect(box).toHaveCSS('color', 'rgb(0, 0, 0)');
             await expect(box).not.toHaveCSS('background-color', 'rgb(0, 0, 255)');
         });
 
         test('clears removed keys from style object bindings', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<div><div id="box" :style="styles"></div></div>');
-            await page.setContent('<x-component styles="{ color: \'red\', backgroundColor: \'blue\' }"></x-component>');
+            const component = await mountComponent(page, '<x-component styles="{ color: \'red\', backgroundColor: \'blue\' }"></x-component>');
 
             const box = page.locator('[x\\:component="x-component"] #box');
             await expect(box).toHaveCSS('color', 'rgb(255, 0, 0)');
             await expect(box).toHaveCSS('background-color', 'rgb(0, 0, 255)');
 
-            await updateState(page, 'x-component', { styles: { color: 'green' } });
+            await updateState(page, component, { styles: { color: 'green' } });
             await expect(box).toHaveCSS('color', 'rgb(0, 128, 0)');
             await expect(box).not.toHaveCSS('background-color', 'rgb(0, 0, 255)');
         });
 
         test('sets and clears dashed and custom style properties', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<div><div id="box" :style="styles"></div></div>');
-            await page.setContent('<x-component styles="{ \'--accent\': \'red\', \'background-color\': \'blue\' }"></x-component>');
+            const component = await mountComponent(page, '<x-component styles="{ \'--accent\': \'red\', \'background-color\': \'blue\' }"></x-component>');
 
             const box = page.locator('[x\\:component="x-component"] #box');
             await expect.poll(() => box.evaluate((element) => ({
@@ -187,7 +187,7 @@ test.describe('Component attribute bindings', () => {
                 background: 'blue',
             });
 
-            await updateState(page, 'x-component', { styles: { '--accent': 'green' } });
+            await updateState(page, component, { styles: { '--accent': 'green' } });
             await expect.poll(() => box.evaluate((element) => ({
                 accent: element.style.getPropertyValue('--accent'),
                 background: element.style.getPropertyValue('background-color'),
@@ -209,7 +209,7 @@ test.describe('Component attribute bindings', () => {
                     const child = document.querySelector('[x\\:component="x-child"]');
                     resolve({
                         hasStateAttribute: child.hasAttribute('state'),
-                        value: child[window.Component.componentSymbol].state.value,
+                        value: el.childComponents[0].state.value,
                     });
                 }, { once: true });
                 document.body.appendChild(el);
@@ -283,26 +283,18 @@ test.describe('Component attribute bindings', () => {
         test('binds :state to child component after initialization', async ({ page }) => {
             await defineComponent(page, 'x-parent', 'XParent', '<div><x-child :state="({ value: this.state.count })"></x-child></div>');
             await defineComponent(page, 'x-child', 'XChild', '<div></div>');
-            await page.setContent('<x-parent count="1"></x-parent>');
+            const parent = await mountComponent(page, '<x-parent count="1"></x-parent>');
 
-            await page.waitForFunction(() => {
-                const root = document.querySelector('[x\\:component="x-child"]');
-                return root && root[window.Component.componentSymbol] && root[window.Component.componentSymbol].initialized;
-            });
+            await page.waitForFunction((parent) => parent.childComponents[0]?.initialized, parent);
+            const child = await parent.evaluateHandle((parent) => parent.childComponents[0]);
 
-            const initialValue = await page.evaluate(() => {
-                const root = document.querySelector('[x\\:component="x-child"]');
-                return root[window.Component.componentSymbol].state.value;
-            });
+            const initialValue = await child.evaluate((child) => child.state.value);
 
             expect(initialValue).toBe(1);
 
-            await updateState(page, 'x-parent', { count: 2 });
+            await updateState(page, parent, { count: 2 });
 
-            const updatedValue = await page.evaluate(() => {
-                const root = document.querySelector('[x\\:component="x-child"]');
-                return root[window.Component.componentSymbol].state.value;
-            });
+            const updatedValue = await child.evaluate((child) => child.state.value);
 
             expect(updatedValue).toBe(2);
         });

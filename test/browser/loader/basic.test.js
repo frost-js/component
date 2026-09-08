@@ -1,5 +1,5 @@
 import { expect, test } from '#test';
-import { mockComponents } from '../../support/utils.js';
+import { mockComponents, mountComponent } from '../../support/utils.js';
 
 test.describe('Component autoload', () => {
     test.describe('Fetching and registration', () => {
@@ -81,13 +81,12 @@ test.describe('Component autoload', () => {
             await page.evaluate(() => {
                 window._events = [];
                 window.Component.bootstrap({ baseUrl: 'http://test.local/components' });
-                document.body.innerHTML = '<x-scripts></x-scripts>';
             });
+            const component = await mountComponent(page, '<x-scripts></x-scripts>');
 
-            await page.waitForFunction(() => {
-                const root = document.querySelector('[x\\:component="x-scripts"]');
-                return root && root[window.Component.componentSymbol] && root[window.Component.componentSymbol].loaded === true;
-            });
+            await page.waitForFunction((component) => {
+                return component.loaded === true;
+            }, component);
 
             const events = await page.evaluate(() => window._events || []);
             expect(events).toEqual(['connected', 'initialized']);

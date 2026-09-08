@@ -1,5 +1,5 @@
 import { expect, test } from '#test';
-import { attachMethod, defineComponent, flushTasks, updateState, waitForComponent } from '../../support/utils.js';
+import { attachMethod, defineComponent, flushTasks, mountComponent, updateState, waitForComponent } from '../../support/utils.js';
 
 test.describe('Loop binding cleanup', () => {
     test.beforeEach(async ({ page }) => {
@@ -15,12 +15,12 @@ test.describe('Loop binding cleanup', () => {
             window._bindingRuns++;
             return this.state.color;
         });
-        await page.setContent('<x-list items="[{ id: 0 }]" color="red"></x-list>');
-        await waitForComponent(page, 'x-list');
+        const component = await mountComponent(page, '<x-list items="[{ id: 0 }]" color="red"></x-list>');
+        await waitForComponent(page, component);
 
         const rows = page.locator('.row');
         for (let id = 1; id <= 3; id++) {
-            await updateState(page, 'x-list', { items: [{ id }] });
+            await updateState(page, component, { items: [{ id }] });
             await expect(rows).toHaveCount(1);
             await expect(rows).toHaveAttribute('data-id', String(id));
         }
@@ -28,17 +28,17 @@ test.describe('Loop binding cleanup', () => {
         await page.evaluate(() => {
             window._bindingRuns = 0;
         });
-        await updateState(page, 'x-list', { color: 'blue' });
+        await updateState(page, component, { color: 'blue' });
         await flushTasks(page);
         expect(await page.evaluate(() => window._bindingRuns)).toBe(1);
-        expect(await rows.evaluate((element) => element[window.Component.componentSymbol].state.color)).toBe('blue');
+        expect(await component.evaluate((component) => component.childComponents[0].state.color)).toBe('blue');
 
-        await updateState(page, 'x-list', { items: [] });
+        await updateState(page, component, { items: [] });
         await expect(rows).toHaveCount(0);
         await page.evaluate(() => {
             window._bindingRuns = 0;
         });
-        await updateState(page, 'x-list', { color: 'green' });
+        await updateState(page, component, { color: 'green' });
         await flushTasks(page);
         expect(await page.evaluate(() => window._bindingRuns)).toBe(0);
     });
@@ -49,13 +49,13 @@ test.describe('Loop binding cleanup', () => {
             window._bindingRuns++;
             return this.state.color;
         });
-        await page.setContent('<x-list items="[{ id: 1 }, { id: 2 }]" color="red"></x-list>');
-        await waitForComponent(page, 'x-list');
+        const component = await mountComponent(page, '<x-list items="[{ id: 1 }, { id: 2 }]" color="red"></x-list>');
+        await waitForComponent(page, component);
         await page.evaluate(() => {
             window._originalRows = [...document.querySelectorAll('.row')];
         });
 
-        await updateState(page, 'x-list', { items: [{ id: 2 }, { id: 1 }] });
+        await updateState(page, component, { items: [{ id: 2 }, { id: 1 }] });
         await expect(page.locator('.row')).toHaveText(['2', '1']);
         expect(await page.evaluate(() => {
             const rows = [...document.querySelectorAll('.row')];
@@ -65,17 +65,17 @@ test.describe('Loop binding cleanup', () => {
         await page.evaluate(() => {
             window._bindingRuns = 0;
         });
-        await updateState(page, 'x-list', { color: 'blue' });
+        await updateState(page, component, { color: 'blue' });
         await flushTasks(page);
         expect(await page.evaluate(() => window._bindingRuns)).toBe(2);
-        expect(await page.locator('.row').evaluateAll((elements) => elements.map((element) => element[window.Component.componentSymbol].state.color))).toEqual(['blue', 'blue']);
+        expect(await component.evaluate((component) => component.childComponents.map((child) => child.state.color))).toEqual(['blue', 'blue']);
 
-        await updateState(page, 'x-list', { items: [{ id: 2 }] });
+        await updateState(page, component, { items: [{ id: 2 }] });
         await expect(page.locator('.row')).toHaveText(['2']);
         await page.evaluate(() => {
             window._bindingRuns = 0;
         });
-        await updateState(page, 'x-list', { color: 'green' });
+        await updateState(page, component, { color: 'green' });
         await flushTasks(page);
         expect(await page.evaluate(() => window._bindingRuns)).toBe(1);
     });
@@ -98,15 +98,15 @@ test.describe('Loop binding cleanup', () => {
         await page.evaluate(() => {
             window._rowInitialized = false;
         });
-        await page.setContent('<x-list color="red"></x-list>');
-        await waitForComponent(page, 'x-list');
+        const component = await mountComponent(page, '<x-list color="red"></x-list>');
+        await waitForComponent(page, component);
         await expect(page.locator('.row')).toHaveCount(0);
         expect(await page.evaluate(() => window._rowInitialized)).toBe(false);
 
         await page.evaluate(() => {
             window._bindingRuns = 0;
         });
-        await updateState(page, 'x-list', { color: 'blue' });
+        await updateState(page, component, { color: 'blue' });
         await flushTasks(page);
         expect(await page.evaluate(() => window._bindingRuns)).toBe(0);
     });
@@ -127,32 +127,32 @@ test.describe('Loop binding cleanup', () => {
             window._bindingRuns++;
             return this.state.color;
         });
-        await page.setContent('<x-list items="[{ id: 1 }]" nested="[{ id: 1 }]" show="false" color="red"></x-list>');
-        await waitForComponent(page, 'x-list');
+        const component = await mountComponent(page, '<x-list items="[{ id: 1 }]" nested="[{ id: 1 }]" show="false" color="red"></x-list>');
+        await waitForComponent(page, component);
         expect(await page.evaluate(() => window._bindingRuns)).toBe(0);
 
-        await updateState(page, 'x-list', { show: true });
+        await updateState(page, component, { show: true });
         await expect(page.locator('.nested')).toHaveText('red');
         await expect(page.locator('section span')).toHaveAttribute('title', 'red');
 
-        await updateState(page, 'x-list', { nested: [{ id: 2 }] });
+        await updateState(page, component, { nested: [{ id: 2 }] });
         await expect(page.locator('.nested')).toHaveCount(1);
         await expect(page.locator('.nested')).toHaveText('red');
         await page.evaluate(() => {
             window._bindingRuns = 0;
         });
-        await updateState(page, 'x-list', { color: 'green' });
+        await updateState(page, component, { color: 'green' });
         await flushTasks(page);
         expect(await page.evaluate(() => window._bindingRuns)).toBe(2);
         await expect(page.locator('section span')).toHaveText('green');
         await expect(page.locator('.nested')).toHaveText('green');
 
-        await updateState(page, 'x-list', { items: [] });
+        await updateState(page, component, { items: [] });
         await expect(page.locator('.row')).toHaveCount(0);
         await page.evaluate(() => {
             window._bindingRuns = 0;
         });
-        await updateState(page, 'x-list', { color: 'blue', nested: [{ id: 3 }] });
+        await updateState(page, component, { color: 'blue', nested: [{ id: 3 }] });
         await flushTasks(page);
         expect(await page.evaluate(() => window._bindingRuns)).toBe(0);
     });
@@ -163,22 +163,21 @@ test.describe('Loop binding cleanup', () => {
             window._bindingRuns++;
             return this.state.color;
         });
-        await page.setContent('<x-list items="[]" color="red"></x-list>');
-        await waitForComponent(page, 'x-list');
+        const component = await mountComponent(page, '<x-list items="[]" color="red"></x-list>');
+        await waitForComponent(page, component);
 
         const errorPromise = page.waitForEvent('pageerror');
-        await updateState(page, 'x-list', { items: [{ id: 1 }] });
+        await updateState(page, component, { items: [{ id: 1 }] });
         const error = await errorPromise;
         expect(error.message).toContain('only supports custom properties');
         await expect(page.locator('.row')).toHaveCount(0);
 
-        await page.evaluate(() => {
-            const list = document.querySelector('[x\\:component="x-list"]')[window.Component.componentSymbol];
+        await component.evaluate((list) => {
             window._bindingRuns = 0;
             window._outsideValues = [];
             list.effect(() => window._outsideValues.push(list.state.color));
         });
-        await updateState(page, 'x-list', { color: 'blue' });
+        await updateState(page, component, { color: 'blue' });
         await flushTasks(page);
         expect(await page.evaluate(() => window._bindingRuns)).toBe(0);
         expect(await page.evaluate(() => window._outsideValues)).toEqual(['red', 'blue']);
