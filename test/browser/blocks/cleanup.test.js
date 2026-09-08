@@ -31,7 +31,7 @@ test.describe('Loop binding cleanup', () => {
         await updateState(page, 'x-list', { color: 'blue' });
         await flushTasks(page);
         expect(await page.evaluate(() => window._bindingRuns)).toBe(1);
-        expect(await rows.evaluate((element) => element.component.state.color)).toBe('blue');
+        expect(await rows.evaluate((element) => element[window.Component.componentSymbol].state.color)).toBe('blue');
 
         await updateState(page, 'x-list', { items: [] });
         await expect(rows).toHaveCount(0);
@@ -68,7 +68,7 @@ test.describe('Loop binding cleanup', () => {
         await updateState(page, 'x-list', { color: 'blue' });
         await flushTasks(page);
         expect(await page.evaluate(() => window._bindingRuns)).toBe(2);
-        expect(await page.locator('.row').evaluateAll((elements) => elements.map((element) => element.component.state.color))).toEqual(['blue', 'blue']);
+        expect(await page.locator('.row').evaluateAll((elements) => elements.map((element) => element[window.Component.componentSymbol].state.color))).toEqual(['blue', 'blue']);
 
         await updateState(page, 'x-list', { items: [{ id: 2 }] });
         await expect(page.locator('.row')).toHaveText(['2']);
@@ -173,7 +173,7 @@ test.describe('Loop binding cleanup', () => {
         await expect(page.locator('.row')).toHaveCount(0);
 
         await page.evaluate(() => {
-            const list = document.querySelector('[x\\:component="x-list"]').component;
+            const list = document.querySelector('[x\\:component="x-list"]')[window.Component.componentSymbol];
             window._bindingRuns = 0;
             window._outsideValues = [];
             list.effect(() => window._outsideValues.push(list.state.color));

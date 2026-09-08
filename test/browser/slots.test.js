@@ -25,8 +25,8 @@ test.describe('Component slots', () => {
             await page.setContent('<x-component slot="outer"><h1 slot="title">Title</h1></x-component>');
 
             const result = await page.locator('[x\\:component="x-component"]').evaluate((element) => ({
-                assignedCount: element.component.getSlot('title').assigned().length,
-                componentSlot: element.component.slot,
+                assignedCount: element[window.Component.componentSymbol].getSlot('title').assigned().length,
+                componentSlot: element[window.Component.componentSymbol].slot,
                 elementSlot: element.slot,
             }));
 
@@ -45,7 +45,7 @@ test.describe('Component slots', () => {
 
                 const root = page.locator('[x\\:component="x-component"]');
                 await expect(root).toHaveText('Fallback');
-                expect(await root.evaluate((element, name) => element.component.getSlot(name), name)).toBeUndefined();
+                expect(await root.evaluate((element, name) => element[window.Component.componentSymbol].getSlot(name), name)).toBeUndefined();
             });
 
             test(`assigns explicitly defined slot "${name}"`, async ({ page }) => {
@@ -55,7 +55,7 @@ test.describe('Component slots', () => {
 
                 const root = page.locator('[x\\:component="x-component"]');
                 await expect(root).toHaveText('Title');
-                expect(await root.evaluate((element, name) => element.component.getSlot(name).assigned().length, name)).toBe(1);
+                expect(await root.evaluate((element, name) => element[window.Component.componentSymbol].getSlot(name).assigned().length, name)).toBe(1);
             });
         }
     });
@@ -173,7 +173,7 @@ test.describe('Component slots', () => {
                     await page.setContent(`<x-parent show="true" items="[{ id: 1 }]">${assigned ? '<b>Assigned</b>' : ''}</x-parent>`);
 
                     const root = page.locator('[x\\:component="x-parent"]');
-                    await expect.poll(() => root.evaluate((element) => element.component.loaded)).toBe(true);
+                    await expect.poll(() => root.evaluate((element) => element[window.Component.componentSymbol].loaded)).toBe(true);
                     await expect(root).toHaveText(assigned ? 'Assigned' : 'Fallback');
 
                     await updateState(page, 'x-parent', { show: false, items: [] });
@@ -207,7 +207,7 @@ test.describe('Component slots', () => {
                 await root.evaluate((element) => {
                     const content = document.createElement('b');
                     content.textContent = 'Assigned';
-                    element.component.getSlot().assign(content);
+                    element[window.Component.componentSymbol].getSlot().assign(content);
                 });
 
                 await updateState(page, 'x-parent', { show: false, items: [] });
@@ -268,7 +268,7 @@ test.describe('Component slots', () => {
                     await expect(page.locator('section')).toHaveText('Fallback');
 
                     await page.evaluate(({ directive, userFirst }) => {
-                        const parent = document.querySelector('[x\\:component="x-parent"]').component;
+                        const parent = document.querySelector('[x\\:component="x-parent"]')[window.Component.componentSymbol];
                         const change = directive === 'x:if' ? { show: true } : { items: [{ id: 1 }] };
                         parent.state.set(userFirst ? { user: null, ...change } : { ...change, user: null });
                     }, { directive, userFirst });
@@ -368,7 +368,7 @@ test.describe('Component slots', () => {
             await expect(page.locator('span')).toHaveText('Updated');
 
             await page.locator('[x\\:component="x-parent"]').evaluate((element) => {
-                element.component.getSlot().assign(document.createTextNode('Assigned'));
+                element[window.Component.componentSymbol].getSlot().assign(document.createTextNode('Assigned'));
             });
             await updateState(page, 'x-parent', { user: null });
             await flushTasks(page);
@@ -377,7 +377,7 @@ test.describe('Component slots', () => {
             await updateState(page, 'x-parent', { show: false });
             await expect(page.locator('section')).toHaveCount(0);
             await page.locator('[x\\:component="x-parent"]').evaluate((element) => {
-                element.component.getSlot().assigned()[0].remove();
+                element[window.Component.componentSymbol].getSlot().assigned()[0].remove();
             });
             await flushTasks(page);
             await updateState(page, 'x-parent', { user: { name: 'Restored' }, show: true });
@@ -406,7 +406,7 @@ test.describe('Component slots', () => {
             const root = page.locator('[x\\:component="x-parent"]');
             for (const label of ['Updated', 'Latest']) {
                 await root.evaluate((element) => {
-                    element.component.getSlot().assign(document.createTextNode('Assigned'));
+                    element[window.Component.componentSymbol].getSlot().assign(document.createTextNode('Assigned'));
                     window._fallbackReads = 0;
                 });
                 await updateState(page, 'x-parent', { label });
@@ -416,7 +416,7 @@ test.describe('Component slots', () => {
                 expect(await page.evaluate(() => window._fallbackReads)).toBe(0);
                 await expect(page.locator('section')).toHaveCount(0);
 
-                await root.evaluate((element) => element.component.getSlot().assigned()[0].remove());
+                await root.evaluate((element) => element[window.Component.componentSymbol].getSlot().assigned()[0].remove());
                 await expect(page.locator('section')).toHaveText(label);
                 await expect(page.locator('span')).toHaveText(label);
                 await flushTasks(page);
@@ -450,7 +450,7 @@ test.describe('Component slots', () => {
                 await root.evaluate((element) => {
                     const fragment = document.createDocumentFragment();
                     fragment.append(document.createElement('i'), document.createElement('i'));
-                    element.component.getSlot().assign(fragment);
+                    element[window.Component.componentSymbol].getSlot().assign(fragment);
                 });
                 await expect(page.locator('input')).toHaveCount(0);
                 await page.locator('i').first().evaluate((element) => element.remove());
@@ -485,19 +485,19 @@ test.describe('Component slots', () => {
 
             const root = page.locator('[x\\:component="x-parent"]');
             await root.evaluate((element) => {
-                const slot = element.component.getSlot();
+                const slot = element[window.Component.componentSymbol].getSlot();
                 slot.assign(document.createComment('first'));
                 slot.assign(document.createComment('second'));
             });
             await flushTasks(page);
             await expect(root).toHaveText('Fallback');
-            expect(await root.evaluate((element) => element.component.getSlot().assigned().length)).toBe(3);
+            expect(await root.evaluate((element) => element[window.Component.componentSymbol].getSlot().assigned().length)).toBe(3);
 
-            await root.evaluate((element) => element.component.getSlot().assign(document.createTextNode('')));
+            await root.evaluate((element) => element[window.Component.componentSymbol].getSlot().assign(document.createTextNode('')));
             await expect(root.locator('span')).toHaveCount(0);
-            expect(await root.evaluate((element) => element.component.getSlot().assigned().map((node) => node.nodeType))).toEqual([8, 8, 3]);
+            expect(await root.evaluate((element) => element[window.Component.componentSymbol].getSlot().assigned().map((node) => node.nodeType))).toEqual([8, 8, 3]);
 
-            await root.evaluate((element) => element.component.getSlot().assigned().at(-1).remove());
+            await root.evaluate((element) => element[window.Component.componentSymbol].getSlot().assigned().at(-1).remove());
             await expect(root.locator('span')).toHaveText('Fallback');
         });
     });

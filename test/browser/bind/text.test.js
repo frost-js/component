@@ -138,7 +138,7 @@ test.describe('Component text bindings', () => {
 
                 const label = page.locator('[x\\:component="x-component"] #label');
                 await expect(label).toHaveText(`${literal}1`);
-                await expect.poll(() => label.evaluate((element) => element.parentElement.component.loaded)).toBe(true);
+                await expect.poll(() => label.evaluate((element) => element.parentElement[window.Component.componentSymbol].loaded)).toBe(true);
 
                 await updateState(page, 'x-component', { count: 2 });
                 await expect(label).toHaveText(`${literal}2`);

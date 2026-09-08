@@ -1,4 +1,4 @@
-import { findComponentChain, flattenElements, isComponent } from './helpers.js';
+import { callDOMMethod, findComponentChain, flattenElements, getDOMProperty, isComponent } from './helpers.js';
 import { load, registerLoadedResources } from './loader.js';
 import Suspense from './suspense.js';
 
@@ -29,7 +29,7 @@ const loadComponents = (nodes) => {
  * @param {Element} node The node to mount.
  */
 const mountNode = (node) => {
-    if (!node.isConnected) {
+    if (!getDOMProperty(node, 'isConnected')) {
         return;
     }
 
@@ -46,11 +46,11 @@ const mountNode = (node) => {
             }
 
             mountedComponents.add(component);
-            component.dispatchEvent(new Event('mounted'));
+            callDOMMethod(component, 'dispatchEvent', new Event('mounted'));
         }
     }
 
-    if (!isComponent(node.localName)) {
+    if (!isComponent(getDOMProperty(node, 'localName'))) {
         return;
     }
 
@@ -60,7 +60,7 @@ const mountNode = (node) => {
         }
 
         pendingComponents.add(node);
-        node.addEventListener('initialized', () => {
+        callDOMMethod(node, 'addEventListener', 'initialized', () => {
             pendingComponents.delete(node);
             mountNode(node);
         }, { once: true });
@@ -81,7 +81,7 @@ const mountNode = (node) => {
         });
     }
 
-    const elements = renderRoot.querySelectorAll('*');
+    const elements = callDOMMethod(renderRoot, 'querySelectorAll', '*');
 
     loadComponents(elements);
 
@@ -101,20 +101,20 @@ const dismountNode = (node) => {
     }
 
     for (const component of findComponentChain(node)) {
-        if (component.element.isConnected || !mountedComponents.has(component)) {
+        if (getDOMProperty(component.element, 'isConnected') || !mountedComponents.has(component)) {
             continue;
         }
 
         mountedComponents.delete(component);
-        component.dispatchEvent(new Event('dismounted'));
+        callDOMMethod(component, 'dispatchEvent', new Event('dismounted'));
     }
 
-    if (!isComponent(node.localName) || !(node.renderRoot instanceof ShadowRoot)) {
+    if (!isComponent(getDOMProperty(node, 'localName')) || !(node.renderRoot instanceof ShadowRoot)) {
         return;
     }
 
     const renderRoot = node.renderRoot;
-    const elements = renderRoot.querySelectorAll('*');
+    const elements = callDOMMethod(renderRoot, 'querySelectorAll', '*');
 
     for (const element of elements) {
         dismountNode(element);
@@ -122,7 +122,7 @@ const dismountNode = (node) => {
 };
 
 const bootstrapCallback = () => {
-    const elements = document.body.querySelectorAll(':not(script, link[rel="stylesheet"], style)');
+    const elements = callDOMMethod(getDOMProperty(document, 'body'), 'querySelectorAll', ':not(script, link[rel="stylesheet"], style)');
 
     registerLoadedResources();
 
@@ -135,7 +135,7 @@ const bootstrapCallback = () => {
                     }
 
                     const event = new Event(entry.isIntersecting ? 'visible' : 'invisible');
-                    component.dispatchEvent(event);
+                    callDOMMethod(component, 'dispatchEvent', event);
                 }
             }
         });
@@ -163,7 +163,7 @@ const bootstrapCallback = () => {
             loadComponents([...addedNodes]);
 
             for (const node of removedNodes) {
-                if (node.isConnected) {
+                if (getDOMProperty(node, 'isConnected')) {
                     continue;
                 }
 
@@ -171,7 +171,7 @@ const bootstrapCallback = () => {
             }
 
             for (const node of addedNodes) {
-                if (!node.isConnected) {
+                if (!getDOMProperty(node, 'isConnected')) {
                     continue;
                 }
 
@@ -183,7 +183,7 @@ const bootstrapCallback = () => {
             mountNode(element);
         }
 
-        mutationObserver.observe(document.body, {
+        mutationObserver.observe(getDOMProperty(document, 'body'), {
             childList: true,
             subtree: true,
         });
@@ -211,9 +211,9 @@ export function bootstrap(options = {}) {
         currentExtension = options.extension;
     }
 
-    if (document.body) {
+    if (getDOMProperty(document, 'body')) {
         if (pendingBootstrapCallback) {
-            document.removeEventListener('DOMContentLoaded', pendingBootstrapCallback);
+            callDOMMethod(document, 'removeEventListener', 'DOMContentLoaded', pendingBootstrapCallback);
             pendingBootstrapCallback = null;
         }
 
@@ -224,6 +224,6 @@ export function bootstrap(options = {}) {
             bootstrapCallback();
         };
 
-        document.addEventListener('DOMContentLoaded', pendingBootstrapCallback, { once: true });
+        callDOMMethod(document, 'addEventListener', 'DOMContentLoaded', pendingBootstrapCallback, { once: true });
     }
 }

@@ -19,7 +19,7 @@ test.describe('Component event bindings', () => {
 
             const clicked = await page.evaluate(() => {
                 const root = document.querySelector('[x\\:component="x-component"]');
-                return root.component.state.clicked;
+                return root[window.Component.componentSymbol].state.clicked;
             });
 
             expect(clicked).toBe(true);
@@ -34,7 +34,7 @@ test.describe('Component event bindings', () => {
             const count = await page.evaluate(() => {
                 const root = document.querySelector('[x\\:component="x-component"]');
                 root.dispatchEvent(new Event('click'));
-                return root.component.state.count;
+                return root[window.Component.componentSymbol].state.count;
             });
 
             expect(count).toBe(1);
@@ -48,7 +48,7 @@ test.describe('Component event bindings', () => {
 
             const root = page.locator('[x\\:component="x-component"]');
             await root.click();
-            await expect.poll(() => root.evaluate((element) => element.component.state.eventType)).toBe('click');
+            await expect.poll(() => root.evaluate((element) => element[window.Component.componentSymbol].state.eventType)).toBe('click');
         });
 
         test('evaluates function-valued handler expressions once during binding', async ({ page }) => {
@@ -61,14 +61,14 @@ test.describe('Component event bindings', () => {
 
             const root = page.locator('[x\\:component="x-component"]');
             expect(await page.evaluate(() => window._handlerCreations)).toBe(1);
-            expect(await root.evaluate((element) => element.component.state.count)).toBe(0);
+            expect(await root.evaluate((element) => element[window.Component.componentSymbol].state.count)).toBe(0);
 
             await root.click();
             await root.click();
 
             expect(await root.evaluate((element) => ({
-                count: element.component.state.count,
-                eventType: element.component.state.eventType,
+                count: element[window.Component.componentSymbol].state.count,
+                eventType: element[window.Component.componentSymbol].state.eventType,
             }))).toEqual({ count: 2, eventType: 'click' });
             expect(await page.evaluate(() => window._handlerCreations)).toBe(1);
         });
@@ -93,7 +93,7 @@ test.describe('Component event bindings', () => {
             await page.setContent('<x-component></x-component>');
             const error = await errorPromise;
             expect(error.message).toContain('must be a component method, function expression, or braced statement body');
-            expect(await page.locator('[x\\:component="x-component"]').evaluate((element) => element.component.state.count)).toBe(1);
+            expect(await page.locator('[x\\:component="x-component"]').evaluate((element) => element[window.Component.componentSymbol].state.count)).toBe(1);
         });
 
         for (const [name, template] of [
@@ -124,7 +124,7 @@ test.describe('Component event bindings', () => {
                 const root = document.querySelector('[x\\:component="x-component"]');
                 const clickEvent = new Event('click', { bubbles: true, cancelable: true });
                 root.dispatchEvent(clickEvent);
-                return root.component.state.defaultPrevented;
+                return root[window.Component.componentSymbol].state.defaultPrevented;
             });
 
             expect(defaultPrevented).toBe(true);
@@ -151,7 +151,7 @@ test.describe('Component event bindings', () => {
 
                 return {
                     bubbled,
-                    clicked: root.component.state.clicked,
+                    clicked: root[window.Component.componentSymbol].state.clicked,
                 };
             });
 
@@ -172,7 +172,7 @@ test.describe('Component event bindings', () => {
                 const root = document.querySelector('[x\\:component="x-component"]');
                 root.dispatchEvent(new Event('click', { bubbles: true, cancelable: true }));
                 root.dispatchEvent(new Event('click', { bubbles: true, cancelable: true }));
-                return root.component.state.clicked;
+                return root[window.Component.componentSymbol].state.clicked;
             });
 
             expect(clicked).toBe(1);
@@ -196,7 +196,7 @@ test.describe('Component event bindings', () => {
 
             const clicked = await page.evaluate(() => {
                 const root = document.querySelector('[x\\:component="x-component"]');
-                return root.component.state.clicked;
+                return root[window.Component.componentSymbol].state.clicked;
             });
 
             expect(clicked).toBe(1);
@@ -215,7 +215,7 @@ test.describe('Component event bindings', () => {
                 const root = document.querySelector('[x\\:component="x-component"]');
                 const inner = root.querySelector('#inner');
                 inner.dispatchEvent(new Event('click', { bubbles: true }));
-                return root.component.state.eventPhase;
+                return root[window.Component.componentSymbol].state.eventPhase;
             });
 
             expect(eventPhase).toBe(1);
@@ -235,7 +235,7 @@ test.describe('Component event bindings', () => {
                 const root = document.querySelector('[x\\:component="x-component"]');
                 const clickEvent = new Event('click', { bubbles: true, cancelable: true });
                 root.dispatchEvent(clickEvent);
-                return root.component.state.defaultPrevented;
+                return root[window.Component.componentSymbol].state.defaultPrevented;
             });
 
             expect(defaultPrevented).toBe(false);
@@ -272,9 +272,9 @@ test.describe('Component event bindings', () => {
             const result = await page.evaluate(() => {
                 const parent = document.querySelector('[x\\:component="x-parent"]');
                 return {
-                    currentTargetTag: parent.component.state.currentTargetTag,
-                    targetTag: parent.component.state.targetTag,
-                    itemId: parent.component.state.itemId,
+                    currentTargetTag: parent[window.Component.componentSymbol].state.currentTargetTag,
+                    targetTag: parent[window.Component.componentSymbol].state.targetTag,
+                    itemId: parent[window.Component.componentSymbol].state.itemId,
                 };
             });
 
@@ -311,8 +311,8 @@ test.describe('Component event bindings', () => {
             const result = await page.evaluate(() => {
                 const parent = document.querySelector('[x\\:component="x-parent"]');
                 return {
-                    currentTargetTag: parent.component.state.currentTargetTag,
-                    targetTag: parent.component.state.targetTag,
+                    currentTargetTag: parent[window.Component.componentSymbol].state.currentTargetTag,
+                    targetTag: parent[window.Component.componentSymbol].state.targetTag,
                 };
             });
 
@@ -443,8 +443,8 @@ test.describe('Component event bindings', () => {
             await button.click();
 
             const result = await page.locator('[x\\:component="x-parent"]').evaluate((element) => ({
-                currentTargetId: element.component.state.currentTargetId,
-                savedId: element.component.state.savedId,
+                currentTargetId: element[window.Component.componentSymbol].state.currentTargetId,
+                savedId: element[window.Component.componentSymbol].state.savedId,
             }));
 
             expect(result).toEqual({
@@ -525,7 +525,7 @@ test.describe('Component event bindings', () => {
             test(`keeps ${once ? 'once' : 'regular'} handlers across a late-defined child's connection and initialization`, async ({ page }) => {
                 await defineComponent(page, 'x-parent', 'XParent', `<div><x-child @save${once ? '.once' : ''}="{ this.state.phases = [...this.state.phases, event.detail.phase]; }"></x-child></div>`);
                 await page.setContent('<x-parent phases="[]"></x-parent>');
-                await page.waitForFunction(() => document.querySelector('[x\\:component="x-parent"]')?.component.initialized);
+                await page.waitForFunction(() => document.querySelector('[x\\:component="x-parent"]')?.[window.Component.componentSymbol].initialized);
                 await page.evaluate(() => {
                     class XChild extends window.Component {
                         static get template() {
@@ -546,7 +546,7 @@ test.describe('Component event bindings', () => {
                 await waitForComponent(page, 'x-parent');
                 await page.getByRole('button').click();
 
-                expect(await page.evaluate(() => document.querySelector('[x\\:component="x-parent"]').component.state.phases))
+                expect(await page.evaluate(() => document.querySelector('[x\\:component="x-parent"]')[window.Component.componentSymbol].state.phases))
                     .toEqual(once ? ['connected'] : ['connected', 'initialize', 'click']);
             });
         }
@@ -573,9 +573,9 @@ test.describe('Component event bindings', () => {
             await defineComponent(page, 'x-row', 'XRow', '<x-late></x-late>');
             await defineComponent(page, 'x-parent', 'XParent', '<div><x-row x:each="items" @save="{ this.state.calls++; }"></x-row></div>');
             await page.setContent('<x-parent items="[{ id: 1 }]" calls="0"></x-parent>');
-            await page.waitForFunction(() => document.querySelector('x-late')?.component?.initialized);
+            await page.waitForFunction(() => document.querySelector('x-late')?.[window.Component.componentSymbol]?.initialized);
             await page.evaluate(() => {
-                window._parent = document.querySelector('[x\\:component="x-parent"]').component;
+                window._parent = document.querySelector('[x\\:component="x-parent"]')[window.Component.componentSymbol];
                 window._late = document.querySelector('x-late');
                 window._parent.state.items = [];
             });

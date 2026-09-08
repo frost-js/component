@@ -113,7 +113,7 @@ test.describe('Component conditionals', () => {
                 await page.setContent('<x-parent loading="true" ready="false" user="null" after="true"></x-parent>');
 
                 const root = page.locator('[x\\:component="x-parent"]');
-                await expect.poll(() => root.evaluate((element) => element.component.loaded)).toBe(true);
+                await expect.poll(() => root.evaluate((element) => element[window.Component.componentSymbol].loaded)).toBe(true);
                 await expect(root.locator('#loading')).toHaveText('Loading');
                 await expect(root.locator('section')).toHaveCount(0);
                 await expect(root.locator('#after')).toHaveText('After');
@@ -157,7 +157,7 @@ test.describe('Component conditionals', () => {
             await page.locator('input').fill('keep this');
             await page.evaluate(() => {
                 window._branch = document.querySelector('section');
-                window._child = document.querySelector('.child').component;
+                window._child = document.querySelector('.child')[window.Component.componentSymbol];
                 window._child.state.count = 7;
             });
             await expect(page.locator('.child')).toHaveText('7');
@@ -177,7 +177,7 @@ test.describe('Component conditionals', () => {
             await expect(page.locator('.child')).toHaveText('7');
             expect(await page.evaluate(() => {
                 return document.querySelector('section') === window._branch &&
-                    document.querySelector('.child').component === window._child;
+                    document.querySelector('.child')[window.Component.componentSymbol] === window._child;
             })).toBe(true);
             expect(errors).toEqual([]);
         });
@@ -324,7 +324,7 @@ test.describe('Component conditionals', () => {
             await defineComponent(page, 'x-parent', 'XParent', '<div><x-wrapper x:if="{ this.state.count > 0 }"></x-wrapper><p x:else>Empty</p></div>');
             await page.evaluate(() => window.Component.bootstrap());
             await page.setContent('<x-parent count="1"></x-parent>');
-            await page.waitForFunction(() => document.querySelector('x-child')?.component?.initialized);
+            await page.waitForFunction(() => document.querySelector('x-child')?.[window.Component.componentSymbol]?.initialized);
 
             await defineComponent(page, 'x-child', 'XChild', '<article><input><span>{count}</span></article>');
             await waitForComponent(page, 'x-parent');
@@ -344,7 +344,7 @@ test.describe('Component conditionals', () => {
                 await expect(page.locator('article')).toHaveCount(0);
                 await expect(page.locator('p')).toHaveText('Empty');
                 await flushTasks(page);
-                await page.evaluate((count) => window._branch.component.state.count = count, count);
+                await page.evaluate((count) => window._branch[window.Component.componentSymbol].state.count = count, count);
 
                 await updateState(page, 'x-parent', { count });
                 await expect(page.locator('article span')).toHaveText(`${count}`);
@@ -363,9 +363,9 @@ test.describe('Component conditionals', () => {
             await defineComponent(page, 'x-wrapper', 'XWrapper', '<x-child></x-child>');
             await defineComponent(page, 'x-parent', 'XParent', '<div><x-wrapper x:if="show"></x-wrapper></div>');
             await page.setContent('<x-parent show="true"></x-parent>');
-            await page.waitForFunction(() => document.querySelector('x-child')?.component?.initialized);
+            await page.waitForFunction(() => document.querySelector('x-child')?.[window.Component.componentSymbol]?.initialized);
             await page.evaluate(() => {
-                window._parent = document.querySelector('[x\\:component="x-parent"]').component;
+                window._parent = document.querySelector('[x\\:component="x-parent"]')[window.Component.componentSymbol];
                 window._hiddenOnce = false;
 
                 class XChild extends window.Component {

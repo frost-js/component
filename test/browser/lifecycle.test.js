@@ -59,7 +59,7 @@ test.describe('Component lifecycle', () => {
 
             await page.waitForFunction(() => {
                 const child = document.querySelector('[x\\:component="x-child"]');
-                return child && child.component && child.component.loaded === true;
+                return child && child[window.Component.componentSymbol] && child[window.Component.componentSymbol].loaded === true;
             });
 
             const events = await page.evaluate(() => window._events || []);
@@ -148,13 +148,13 @@ test.describe('Component lifecycle', () => {
 
             await page.waitForFunction(() => {
                 const root = document.querySelector('[x\\:component="x-component"]');
-                return root && root.component && root.component.initialized === true;
+                return root && root[window.Component.componentSymbol] && root[window.Component.componentSymbol].initialized === true;
             });
 
             const errorPromise = page.waitForEvent('pageerror');
             await page.evaluate(() => {
                 const root = document.querySelector('[x\\:component="x-component"]');
-                const host = root.component;
+                const host = root[window.Component.componentSymbol];
                 const container = document.createElement('div');
                 document.body.appendChild(container);
                 container.appendChild(root);
@@ -434,7 +434,7 @@ test.describe('Component lifecycle', () => {
 
             await page.evaluate(() => {
                 const root = document.querySelector('[x\\:component="x-component"]');
-                const component = root.component;
+                const component = root[window.Component.componentSymbol];
                 component.state.count = 0;
                 component._runs = 0;
                 component.effect(() => {
@@ -446,7 +446,7 @@ test.describe('Component lifecycle', () => {
 
             const runs = await page.evaluate(() => {
                 const root = document.querySelector('[x\\:component="x-component"]');
-                return root.component._runs;
+                return root[window.Component.componentSymbol]._runs;
             });
 
             expect(runs).toBe(2);
@@ -459,7 +459,7 @@ test.describe('Component lifecycle', () => {
 
             await page.evaluate(() => {
                 const root = document.querySelector('[x\\:component="x-component"]');
-                const component = root.component;
+                const component = root[window.Component.componentSymbol];
                 component.dispatchEvent(new Event('invisible'));
                 component.effect(() => {
                     component._ran = true;
@@ -468,7 +468,7 @@ test.describe('Component lifecycle', () => {
 
             const ran = await page.evaluate(() => {
                 const root = document.querySelector('[x\\:component="x-component"]');
-                return root.component._ran;
+                return root[window.Component.componentSymbol]._ran;
             });
 
             expect(ran).toBe(true);
@@ -480,7 +480,7 @@ test.describe('Component lifecycle', () => {
             await waitForComponent(page, 'x-component');
 
             await page.evaluate(() => {
-                const component = document.querySelector('[x\\:component="x-component"]').component;
+                const component = document.querySelector('[x\\:component="x-component"]')[window.Component.componentSymbol];
                 component.state.count = 0;
                 window._effectValues = [];
                 const dispose = component.effect(() => window._effectValues.push(component.state.count));
@@ -501,7 +501,7 @@ test.describe('Component lifecycle', () => {
                 await waitForComponent(page, 'x-component');
 
                 await page.evaluate((deferred) => {
-                    const component = document.querySelector('[x\\:component="x-component"]').component;
+                    const component = document.querySelector('[x\\:component="x-component"]')[window.Component.componentSymbol];
                     component.dispatchEvent(new Event(deferred ? 'invisible' : 'visible'));
                     window._effectValues = [];
 
@@ -525,7 +525,7 @@ test.describe('Component lifecycle', () => {
             await waitForComponent(page, 'x-component');
 
             await page.evaluate(() => {
-                const component = document.querySelector('[x\\:component="x-component"]').component;
+                const component = document.querySelector('[x\\:component="x-component"]')[window.Component.componentSymbol];
                 component.state.count = 0;
                 window._effectValues = [];
                 window._disposeEffect = component.effect(() => window._effectValues.push(component.state.count));
@@ -534,7 +534,7 @@ test.describe('Component lifecycle', () => {
             });
             await flushTasks(page);
             await page.evaluate(() => {
-                const component = document.querySelector('[x\\:component="x-component"]').component;
+                const component = document.querySelector('[x\\:component="x-component"]')[window.Component.componentSymbol];
                 window._disposeEffect();
                 component.dispatchEvent(new Event('visible'));
                 component.dispatchEvent(new Event('dismounted'));

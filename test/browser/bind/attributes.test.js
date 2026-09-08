@@ -38,7 +38,7 @@ test.describe('Component attribute bindings', () => {
             await expect(box).toHaveAttribute('title', '&apos;1');
             await expect(box).toHaveAttribute('data-symbol', '&amp;');
             await expect(box).toHaveAttribute('data-match', 'false');
-            await expect.poll(() => box.evaluate((element) => element.parentElement.component.loaded)).toBe(true);
+            await expect.poll(() => box.evaluate((element) => element.parentElement[window.Component.componentSymbol].loaded)).toBe(true);
 
             await updateState(page, 'x-component', { count: 2 });
             await expect(box).toHaveAttribute('title', '&apos;2');
@@ -209,7 +209,7 @@ test.describe('Component attribute bindings', () => {
                     const child = document.querySelector('[x\\:component="x-child"]');
                     resolve({
                         hasStateAttribute: child.hasAttribute('state'),
-                        value: child.component.state.value,
+                        value: child[window.Component.componentSymbol].state.value,
                     });
                 }, { once: true });
                 document.body.appendChild(el);
@@ -287,12 +287,12 @@ test.describe('Component attribute bindings', () => {
 
             await page.waitForFunction(() => {
                 const root = document.querySelector('[x\\:component="x-child"]');
-                return root && root.component && root.component.initialized;
+                return root && root[window.Component.componentSymbol] && root[window.Component.componentSymbol].initialized;
             });
 
             const initialValue = await page.evaluate(() => {
                 const root = document.querySelector('[x\\:component="x-child"]');
-                return root.component.state.value;
+                return root[window.Component.componentSymbol].state.value;
             });
 
             expect(initialValue).toBe(1);
@@ -301,7 +301,7 @@ test.describe('Component attribute bindings', () => {
 
             const updatedValue = await page.evaluate(() => {
                 const root = document.querySelector('[x\\:component="x-child"]');
-                return root.component.state.value;
+                return root[window.Component.componentSymbol].state.value;
             });
 
             expect(updatedValue).toBe(2);

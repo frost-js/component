@@ -72,7 +72,7 @@ export async function attachMethod(page, className, methodName, fn) {
 export async function waitForComponent(page, tagName) {
     await page.waitForFunction((tagName) => {
         const root = document.querySelector(`[x\\:component="${tagName}"]`);
-        return root?.component?.loaded === true;
+        return root?.[window.Component.componentSymbol]?.loaded === true;
     }, tagName);
 }
 
@@ -86,12 +86,12 @@ export async function waitForComponent(page, tagName) {
 export async function updateState(page, tagName, newState) {
     await page.waitForFunction((tagName) => {
         const el = document.querySelector(`[x\\:component="${tagName}"]`);
-        return el && el.component && el.component.initialized === true;
+        return el && el[window.Component.componentSymbol] && el[window.Component.componentSymbol].initialized === true;
     }, tagName);
 
     return await page.evaluate(({ tagName, newState }) => {
         const el = document.querySelector(`[x\\:component="${tagName}"]`);
-        const component = el.component;
+        const component = el[window.Component.componentSymbol];
 
         for (const [key, value] of Object.entries(newState)) {
             component.state[key] = value;

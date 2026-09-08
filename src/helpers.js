@@ -1,5 +1,31 @@
 /** @import { default as Component } from './component.js'; */
 
+/** The component that owns a rendered DOM element. */
+export const componentSymbol = Symbol('component');
+
+/**
+ * Reads a DOM prototype property without named-property collisions, or an ordinary property for non-DOM values.
+ * @param {*} node The node or ordinary value.
+ * @param {string|symbol} property The property to read.
+ * @returns {*} The property value.
+ */
+export const getDOMProperty = (node, property) => {
+    const prototype = Object.getPrototypeOf(node);
+    return prototype && 'nodeType' in prototype ?
+        Reflect.get(prototype, property, node) :
+        node[property];
+};
+
+/**
+ * Calls a DOM method without named-property collisions, preserving the receiver.
+ * @param {*} node The node or ordinary value.
+ * @param {string|symbol} method The method to call.
+ * @param {...*} args The arguments to pass.
+ * @returns {*} The method's return value.
+ */
+export const callDOMMethod = (node, method, ...args) =>
+    Reflect.apply(getDOMProperty(node, method), node, args);
+
 /**
  * Determines whether an element is a component.
  * @param {string} tagName The normalized element tag name.
@@ -15,12 +41,12 @@ export function isComponent(tagName) {
  * @returns {Component[]} The components represented by the element, from inner to outer.
  */
 export function findComponentChain(element) {
-    const isShadowHost = isComponent(element.localName) &&
+    const isShadowHost = isComponent(getDOMProperty(element, 'localName')) &&
         element.initialized &&
         element.renderRoot instanceof ShadowRoot;
     let component = isShadowHost ?
         element :
-        element.component;
+        element[componentSymbol];
 
     if (component?.element !== element) {
         return [];
@@ -29,7 +55,7 @@ export function findComponentChain(element) {
     const owners = [];
     while (component) {
         owners.push(component);
-        component = component.component;
+        component = component[componentSymbol];
     }
 
     return owners;
@@ -41,10 +67,10 @@ export function findComponentChain(element) {
  * @returns {Component|null} The parent component, or `null` if none exists.
  */
 export function findParent(component) {
-    if (component.component) {
-        let parentComponent = component.component;
-        while (parentComponent.component) {
-            parentComponent = parentComponent.component;
+    if (component[componentSymbol]) {
+        let parentComponent = component[componentSymbol];
+        while (parentComponent[componentSymbol]) {
+            parentComponent = parentComponent[componentSymbol];
         }
         return parentComponent;
     }
@@ -53,22 +79,24 @@ export function findParent(component) {
         component.element :
         component;
 
-    let parent = baseNode.parentNode;
+    let parent = getDOMProperty(baseNode, 'parentNode');
     while (parent) {
-        if (parent.component) {
-            return parent.component;
+        if (parent[componentSymbol]) {
+            return parent[componentSymbol];
         }
 
-        if (parent.nodeType === Node.DOCUMENT_FRAGMENT_NODE && parent.host) {
-            parent = parent.host;
+        const nodeType = getDOMProperty(parent, 'nodeType');
+        const host = nodeType === Node.DOCUMENT_FRAGMENT_NODE ? getDOMProperty(parent, 'host') : null;
+        if (host) {
+            parent = host;
             continue;
         }
 
-        if (parent.nodeType === Node.ELEMENT_NODE && isComponent(parent.localName)) {
+        if (nodeType === Node.ELEMENT_NODE && isComponent(getDOMProperty(parent, 'localName'))) {
             return parent;
         }
 
-        parent = parent.parentNode;
+        parent = getDOMProperty(parent, 'parentNode');
     }
 
     return null;
@@ -89,18 +117,18 @@ export function findChildren(component, element) {
     }
 
     const visit = (element) => {
-        if (element.component && element.component !== component) {
-            children.push(element.component);
-        } else if (isComponent(element.localName)) {
+        if (element[componentSymbol] && element[componentSymbol] !== component) {
+            children.push(element[componentSymbol]);
+        } else if (isComponent(getDOMProperty(element, 'localName'))) {
             children.push(element);
         } else if (element instanceof HTMLSlotElement) {
-            for (const child of element.assignedElements({ flatten: true })) {
+            for (const child of callDOMMethod(element, 'assignedElements', { flatten: true })) {
                 // Forwarded content can live outside the root and host subtrees.
                 targets.add(child);
                 visit(child);
             }
         } else {
-            for (const child of element.children) {
+            for (const child of getDOMProperty(element, 'children')) {
                 visit(child);
             }
         }
@@ -117,8 +145,8 @@ export function findChildren(component, element) {
  * @returns {Element[]} The flattened element list.
  */
 export function flattenElements(nodes) {
-    return [...nodes].flatMap((node) => node.nodeType === Node.ELEMENT_NODE ?
-        [node, ...node.querySelectorAll('*')] :
+    return [...nodes].flatMap((node) => getDOMProperty(node, 'nodeType') === Node.ELEMENT_NODE ?
+        [node, ...callDOMMethod(node, 'querySelectorAll', '*')] :
         [],
     );
 };
@@ -168,14 +196,14 @@ export function waitForChildren(component, element = component.rootElement) {
                     return true;
                 }
 
-                child.removeEventListener('loaded', check);
+                callDOMMethod(child, 'removeEventListener', 'loaded', check);
                 return false;
             });
 
             for (const child of children) {
                 if (!child.loaded && !pendingChildren.includes(child)) {
                     pendingChildren.push(child);
-                    child.addEventListener('loaded', check, { once: true });
+                    callDOMMethod(child, 'addEventListener', 'loaded', check, { once: true });
                 }
             }
 
@@ -192,15 +220,15 @@ export function waitForChildren(component, element = component.rootElement) {
                 return;
             }
 
-            element.removeEventListener('slotchange', check);
+            callDOMMethod(element, 'removeEventListener', 'slotchange', check);
             resolve();
         };
 
         const observer = new MutationObserver(check);
-        element.addEventListener('slotchange', check);
+        callDOMMethod(element, 'addEventListener', 'slotchange', check);
 
         for (const child of pendingChildren) {
-            child.addEventListener('loaded', check, { once: true });
+            callDOMMethod(child, 'addEventListener', 'loaded', check, { once: true });
         }
 
         check();

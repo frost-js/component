@@ -5,7 +5,7 @@ import { bind } from './bind.js';
 import { parseBlocks, processConditionals, processLoops } from './blocks.js';
 import EffectScope from './effect-scope.js';
 import { parseElements } from './element.js';
-import { findChildren, findParent, isComponent, waitForChildren } from './helpers.js';
+import { callDOMMethod, componentSymbol, findChildren, findParent, getDOMProperty, isComponent, waitForChildren } from './helpers.js';
 import { getShadowAssets } from './shadow-assets.js';
 import { parseSlots, processSlots } from './slots.js';
 import { parseState } from './state.js';
@@ -32,6 +32,14 @@ export default class Component extends HTMLElement {
     #visible = false;
 
     /**
+     * Gets the symbol linking a rendered element to its owning component.
+     * @returns {symbol} The component ownership key.
+     */
+    static get componentSymbol() {
+        return componentSymbol;
+    }
+
+    /**
      * Gets the template.
      * @returns {string} The component template markup.
      */
@@ -46,24 +54,25 @@ export default class Component extends HTMLElement {
     constructor() {
         super();
 
-        if (!isComponent(this.localName)) {
+        const tagName = getDOMProperty(this, 'localName');
+        if (!isComponent(tagName)) {
             throw new Error('Components must begin with "x-"');
         }
 
         this.#shadowRoot = this.constructor.shadowMode ?
-            this.attachShadow({
+            callDOMMethod(this, 'attachShadow', {
                 mode: this.constructor.shadowMode,
             }) :
             null;
 
         this.#rootElement = this.render();
 
-        if (this.#rootElement.querySelector('slot:is([x\\:if], [x\\:else-if], [x\\:else], [x\\:each])')) {
+        if (callDOMMethod(this.#rootElement, 'querySelector', 'slot:is([x\\:if], [x\\:else-if], [x\\:else], [x\\:each])')) {
             throw new Error('Slot elements cannot have conditional or loop directives');
         }
 
-        this.#rootElement.component = this;
-        this.#rootElement.setAttribute('x:component', this.localName);
+        this.#rootElement[componentSymbol] = this;
+        callDOMMethod(this.#rootElement, 'setAttribute', 'x:component', tagName);
 
         for (const [key, element] of parseElements(this.#rootElement)) {
             if (key in this) {
@@ -76,22 +85,22 @@ export default class Component extends HTMLElement {
         this.#slots = this.#shadowRoot ? {} : parseSlots(this.#rootElement);
 
         if (this.#shadowRoot) {
-            const fragment = document.createDocumentFragment();
+            const fragment = callDOMMethod(document, 'createDocumentFragment');
             const { styleBlocks, stylesheets } = getShadowAssets(this.constructor);
 
             for (const stylesheet of stylesheets) {
-                if (!stylesheet.getAttribute('href')?.trim()) {
+                if (!callDOMMethod(stylesheet, 'getAttribute', 'href')?.trim()) {
                     continue;
                 }
 
-                fragment.appendChild(stylesheet.cloneNode(true));
+                callDOMMethod(fragment, 'appendChild', callDOMMethod(stylesheet, 'cloneNode', true));
             }
 
             for (const styleBlock of styleBlocks) {
-                fragment.appendChild(styleBlock.cloneNode(true));
+                callDOMMethod(fragment, 'appendChild', callDOMMethod(styleBlock, 'cloneNode', true));
             }
 
-            this.#shadowRoot.appendChild(fragment);
+            callDOMMethod(this.#shadowRoot, 'appendChild', fragment);
         }
     }
 
@@ -199,9 +208,9 @@ export default class Component extends HTMLElement {
         const parentComponent = this.parentComponent;
 
         // don't initialize slot components until they have been assigned
-        if (parentComponent && parentComponent.contains(this) && parentComponent.renderRoot === parentComponent.rootElement) {
-            parentComponent.addEventListener('initialized', () => {
-                if (this.#connected || !parentComponent.contains(this)) {
+        if (parentComponent && callDOMMethod(parentComponent, 'contains', this) && parentComponent.renderRoot === parentComponent.rootElement) {
+            callDOMMethod(parentComponent, 'addEventListener', 'initialized', () => {
+                if (this.#connected || !callDOMMethod(parentComponent, 'contains', this)) {
                     return;
                 }
 
@@ -211,7 +220,7 @@ export default class Component extends HTMLElement {
         }
 
         setTimeout(() => {
-            if (this.#connected || !this.isConnected || !this.parentNode) {
+            if (this.#connected || !getDOMProperty(this, 'isConnected') || !getDOMProperty(this, 'parentNode')) {
                 return;
             }
 
@@ -219,13 +228,13 @@ export default class Component extends HTMLElement {
             this.onConnected();
 
             const event = new Event('connected');
-            this.dispatchEvent(event);
+            callDOMMethod(this, 'dispatchEvent', event);
 
             const parentComponent = this.parentComponent;
 
             const initializedPromise = parentComponent && !parentComponent.initialized ?
                 new Promise((resolve) => {
-                    parentComponent.addEventListener('initialized', resolve, { once: true });
+                    callDOMMethod(parentComponent, 'addEventListener', 'initialized', resolve, { once: true });
                 }) :
                 Promise.resolve();
 
@@ -264,7 +273,7 @@ export default class Component extends HTMLElement {
             composed: true,
         });
 
-        this.element.dispatchEvent(event);
+        callDOMMethod(this.element, 'dispatchEvent', event);
     }
 
     /**
@@ -333,7 +342,7 @@ export default class Component extends HTMLElement {
         if (this.loaded) {
             callback();
         } else {
-            this.addEventListener('loaded', callback, { once: true });
+            callDOMMethod(this, 'addEventListener', 'loaded', callback, { once: true });
         }
     }
 
@@ -343,42 +352,43 @@ export default class Component extends HTMLElement {
      * @throws {Error} When the template does not render exactly one supported root element.
      */
     render() {
-        const fragment = document.createRange()
+        const fragment = callDOMMethod(document, 'createRange')
             .createContextualFragment(this.constructor.template);
 
         if (this.constructor.shadowMode) {
             const { styleBlocks, stylesheets } = getShadowAssets(this.constructor);
 
-            for (const node of [...fragment.children]) {
-                if (node.matches('style')) {
-                    if (!styleBlocks.some((block) => block.isEqualNode(node))) {
+            for (const node of [...getDOMProperty(fragment, 'children')]) {
+                if (callDOMMethod(node, 'matches', 'style')) {
+                    if (!styleBlocks.some((block) => callDOMMethod(block, 'isEqualNode', node))) {
                         styleBlocks.push(node);
                     }
 
-                    node.remove();
-                } else if (node.matches('link[rel="stylesheet"]')) {
-                    if (!stylesheets.some((sheet) => sheet.isEqualNode(node))) {
+                    callDOMMethod(node, 'remove');
+                } else if (callDOMMethod(node, 'matches', 'link[rel="stylesheet"]')) {
+                    if (!stylesheets.some((sheet) => callDOMMethod(sheet, 'isEqualNode', node))) {
                         stylesheets.push(node);
                     }
 
-                    node.remove();
+                    callDOMMethod(node, 'remove');
                 }
             }
         }
 
-        if (fragment.childElementCount !== 1) {
+        if (getDOMProperty(fragment, 'childElementCount') !== 1) {
             throw new Error('Components must only render a single element');
         }
 
-        if (fragment.firstElementChild.matches('slot')) {
+        const element = getDOMProperty(fragment, 'firstElementChild');
+        if (callDOMMethod(element, 'matches', 'slot')) {
             throw new Error('Components cannot render a root slot element');
         }
 
-        if (fragment.firstElementChild.matches('x-suspense')) {
+        if (callDOMMethod(element, 'matches', 'x-suspense')) {
             throw new Error('Components cannot render a root x-suspense element');
         }
 
-        return fragment.firstElementChild;
+        return element;
     }
 
     /**
@@ -396,27 +406,27 @@ export default class Component extends HTMLElement {
      * Initializes the component's DOM, bindings, and lifecycle after its parent is ready.
      */
     #initializeComponent() {
-        if (!this.isConnected || !this.parentNode) {
+        if (!getDOMProperty(this, 'isConnected') || !getDOMProperty(this, 'parentNode')) {
             this.#connected = false;
             return;
         }
 
-        this.addEventListener('mounted', () => {
+        callDOMMethod(this, 'addEventListener', 'mounted', () => {
             this.#mounted = true;
             this.#visible = true;
             this.#flushPendingEffects();
         });
 
-        this.addEventListener('dismounted', () => {
+        callDOMMethod(this, 'addEventListener', 'dismounted', () => {
             this.#mounted = false;
         });
 
-        this.addEventListener('visible', () => {
+        callDOMMethod(this, 'addEventListener', 'visible', () => {
             this.#visible = true;
             this.#flushPendingEffects();
         });
 
-        this.addEventListener('invisible', () => {
+        callDOMMethod(this, 'addEventListener', 'invisible', () => {
             this.#visible = false;
         });
 
@@ -431,16 +441,16 @@ export default class Component extends HTMLElement {
         parseState(this);
 
         if (this.#shadowRoot) {
-            this.#shadowRoot.appendChild(this.#rootElement);
+            callDOMMethod(this.#shadowRoot, 'appendChild', this.#rootElement);
         } else {
-            const slot = this.getAttribute('slot');
+            const slot = callDOMMethod(this, 'getAttribute', 'slot');
             if (slot !== null) {
-                this.#rootElement.setAttribute('slot', slot);
+                callDOMMethod(this.#rootElement, 'setAttribute', 'slot', slot);
             }
 
             // replace element
-            this.parentNode.insertBefore(this.#rootElement, this);
-            this.remove();
+            callDOMMethod(getDOMProperty(this, 'parentNode'), 'insertBefore', this.#rootElement, this);
+            callDOMMethod(this, 'remove');
             this.#setElement(this.#rootElement);
         }
 
@@ -457,13 +467,13 @@ export default class Component extends HTMLElement {
         processLoops(this, loops);
 
         const event = new Event('initialized');
-        this.dispatchEvent(event);
+        callDOMMethod(this, 'dispatchEvent', event);
 
         this.#waitForLoad().then(() => {
             this.#loaded = true;
 
             const event = new Event('loaded');
-            this.dispatchEvent(event);
+            callDOMMethod(this, 'dispatchEvent', event);
         });
     }
 
@@ -480,12 +490,12 @@ export default class Component extends HTMLElement {
         this.#element = element;
 
         // Shadow owners keep their host even when their template root changes.
-        const owner = this.component;
+        const owner = this[componentSymbol];
         if (owner && !owner.#shadowRoot) {
             owner.#setElement(element);
         }
 
-        this.dispatchEvent(new CustomEvent('elementchange', {
+        callDOMMethod(this, 'dispatchEvent', new CustomEvent('elementchange', {
             detail: { element, previous },
         }));
     }

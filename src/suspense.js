@@ -1,6 +1,6 @@
 import { bindTemplate } from './bind.js';
 import Component from './component.js';
-import { waitForChildren } from './helpers.js';
+import { callDOMMethod, getDOMProperty, waitForChildren } from './helpers.js';
 
 /**
  * Provides fallback content while child components load.
@@ -29,7 +29,7 @@ export default class Suspense extends Component {
     initialize() {
         super.initialize();
 
-        const disposals = [...this.fallback.querySelectorAll('template')]
+        const disposals = [...callDOMMethod(this.fallback, 'querySelectorAll', 'template')]
             .map((template) => bindTemplate(this, template));
 
         waitForChildren(this, this.content).then(() => {
@@ -37,16 +37,17 @@ export default class Suspense extends Component {
                 dispose();
             }
 
-            if (!this.rootElement.parentNode) {
+            const parent = getDOMProperty(this.rootElement, 'parentNode');
+            if (!parent) {
                 return;
             }
 
             const nodes = this.getSlot().assigned();
             for (const node of nodes) {
-                this.rootElement.parentNode.insertBefore(node, this.rootElement);
+                callDOMMethod(parent, 'insertBefore', node, this.rootElement);
             }
 
-            this.rootElement.remove();
+            callDOMMethod(this.rootElement, 'remove');
         });
     }
 }

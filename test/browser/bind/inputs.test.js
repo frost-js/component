@@ -15,7 +15,7 @@ test.describe('Component input bindings', () => {
 
             const name = await page.evaluate(() => {
                 const root = document.querySelector('[x\\:component="x-component"]');
-                return root.component.state.name;
+                return root[window.Component.componentSymbol].state.name;
             });
 
             expect(name).toBe('bob');
@@ -34,7 +34,7 @@ test.describe('Component input bindings', () => {
 
             const name = await page.evaluate(() => {
                 const root = document.querySelector('[x\\:component="x-component"]');
-                return root.component.state.name;
+                return root[window.Component.componentSymbol].state.name;
             });
 
             expect(name).toBe('bob');
@@ -49,7 +49,7 @@ test.describe('Component input bindings', () => {
 
             await page.evaluate(() => {
                 const root = document.querySelector('[x\\:component="x-component"]');
-                root.component.state.name = 'bob';
+                root[window.Component.componentSymbol].state.name = 'bob';
             });
 
             await expect(input).toHaveValue('bob');
@@ -69,7 +69,7 @@ test.describe('Component input bindings', () => {
 
             const enabled = await page.evaluate(() => {
                 const root = document.querySelector('[x\\:component="x-component"]');
-                return root.component.state.enabled;
+                return root[window.Component.componentSymbol].state.enabled;
             });
 
             expect(enabled).toBe(true);
@@ -84,7 +84,7 @@ test.describe('Component input bindings', () => {
 
             await page.evaluate(() => {
                 const root = document.querySelector('[x\\:component="x-component"]');
-                root.component.state.enabled = true;
+                root[window.Component.componentSymbol].state.enabled = true;
             });
 
             await expect(checkbox).toBeChecked();
@@ -105,7 +105,7 @@ test.describe('Component input bindings', () => {
 
             const tags = await page.evaluate(() => {
                 const root = document.querySelector('[x\\:component="x-component"]');
-                return root.component.state.tags;
+                return root[window.Component.componentSymbol].state.tags;
             });
 
             expect(tags).toEqual(['a', 'b']);
@@ -126,7 +126,7 @@ test.describe('Component input bindings', () => {
 
             const tags = await page.evaluate(() => {
                 const root = document.querySelector('[x\\:component="x-component"]');
-                return root.component.state.tags;
+                return root[window.Component.componentSymbol].state.tags;
             });
 
             expect(tags).toEqual(['b']);
@@ -147,7 +147,7 @@ test.describe('Component input bindings', () => {
 
             const choice = await page.evaluate(() => {
                 const root = document.querySelector('[x\\:component="x-component"]');
-                return root.component.state.choice;
+                return root[window.Component.componentSymbol].state.choice;
             });
 
             expect(choice).toBe('b');
@@ -173,7 +173,7 @@ test.describe('Component input bindings', () => {
 
             await page.evaluate(() => {
                 const root = document.querySelector('[x\\:component="x-component"]');
-                root.component.state.pick = 'b';
+                root[window.Component.componentSymbol].state.pick = 'b';
             });
 
             await expect(rA).not.toBeChecked();
@@ -194,7 +194,7 @@ test.describe('Component input bindings', () => {
 
             const choice = await page.evaluate(() => {
                 const root = document.querySelector('[x\\:component="x-component"]');
-                return root.component.state.choice;
+                return root[window.Component.componentSymbol].state.choice;
             });
 
             expect(choice).toBeUndefined();
@@ -213,11 +213,11 @@ test.describe('Component input bindings', () => {
                     await updateState(page, 'x-component', { choice: 'b' });
                     await expect(input).toHaveValue('b');
                     await expect(input).not.toBeChecked();
-                    expect(await page.evaluate(() => document.querySelector('[x\\:component="x-component"]').component.state.selection))
+                    expect(await page.evaluate(() => document.querySelector('[x\\:component="x-component"]')[window.Component.componentSymbol].state.selection))
                         .toEqual(type === 'checkbox' ? ['a'] : 'a');
 
                     await input.check();
-                    expect(await page.evaluate(() => document.querySelector('[x\\:component="x-component"]').component.state.selection))
+                    expect(await page.evaluate(() => document.querySelector('[x\\:component="x-component"]')[window.Component.componentSymbol].state.selection))
                         .toEqual(type === 'checkbox' ? ['a', 'b'] : 'b');
                     await updateState(page, 'x-component', { choice: 'c' });
                     await expect(input).not.toBeChecked();
@@ -260,7 +260,7 @@ test.describe('Component input bindings', () => {
 
             const choice = await page.evaluate(() => {
                 const root = document.querySelector('[x\\:component="x-component"]');
-                return root.component.state.choice;
+                return root[window.Component.componentSymbol].state.choice;
             });
 
             expect(choice).toBe('a');
@@ -280,7 +280,7 @@ test.describe('Component input bindings', () => {
 
             await page.evaluate(() => {
                 const root = document.querySelector('[x\\:component="x-component"]');
-                root.component.state.choice = 'b';
+                root[window.Component.componentSymbol].state.choice = 'b';
             });
 
             await expect(single).toHaveValue('b');
@@ -298,7 +298,7 @@ test.describe('Component input bindings', () => {
 
             const items = await page.evaluate(() => {
                 const root = document.querySelector('[x\\:component="x-component"]');
-                return root.component.state.items.slice().sort();
+                return root[window.Component.componentSymbol].state.items.slice().sort();
             });
 
             expect(items).toEqual(['a', 'b']);
@@ -318,7 +318,7 @@ test.describe('Component input bindings', () => {
 
             await page.evaluate(() => {
                 const root = document.querySelector('[x\\:component="x-component"]');
-                root.component.state.items = ['a', 'b'];
+                root[window.Component.componentSymbol].state.items = ['a', 'b'];
             });
 
             await expect(multi).toHaveValues(['a', 'b']);
@@ -374,7 +374,7 @@ test.describe('Component input bindings', () => {
                     .toEqual(multiple ? ['b', 'c'] : ['b']);
 
                 await select.selectOption('a');
-                expect(await page.evaluate(() => document.querySelector('[x\\:component="x-component"]').component.state.choice))
+                expect(await page.evaluate(() => document.querySelector('[x\\:component="x-component"]')[window.Component.componentSymbol].state.choice))
                     .toEqual(multiple ? ['a'] : 'a');
 
                 await updateState(page, 'x-component', { show: false });

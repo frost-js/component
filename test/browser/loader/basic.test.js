@@ -86,7 +86,7 @@ test.describe('Component autoload', () => {
 
             await page.waitForFunction(() => {
                 const root = document.querySelector('[x\\:component="x-scripts"]');
-                return root && root.component && root.component.loaded === true;
+                return root && root[window.Component.componentSymbol] && root[window.Component.componentSymbol].loaded === true;
             });
 
             const events = await page.evaluate(() => window._events || []);

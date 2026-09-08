@@ -10,7 +10,7 @@ test.describe('Component constraints', () => {
 
             const match = await page.evaluate(() => {
                 const root = document.querySelector('[x\\:component="x-component"]');
-                return root.component.a === root.querySelector('#title');
+                return root[window.Component.componentSymbol].a === root.querySelector('#title');
             });
 
             expect(match).toBe(true);
@@ -24,7 +24,7 @@ test.describe('Component constraints', () => {
             const result = await page.evaluate(() => {
                 const root = document.querySelector('[x\\:component="x-component"]');
                 return {
-                    matches: root.component.root === root,
+                    matches: root[window.Component.componentSymbol].root === root,
                     hasKeyAttribute: root.hasAttribute('x:key'),
                 };
             });

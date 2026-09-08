@@ -98,12 +98,12 @@ test.describe('Component observers', () => {
 
             await page.waitForFunction(() => {
                 const root = document.querySelector('[x\\:component="x-component"]');
-                return root && root.component && root.component.mounted === true;
+                return root && root[window.Component.componentSymbol] && root[window.Component.componentSymbol].mounted === true;
             });
 
             await page.evaluate(() => {
                 const root = document.querySelector('[x\\:component="x-component"]');
-                window._component = root.component;
+                window._component = root[window.Component.componentSymbol];
                 root.remove();
             });
 
@@ -129,7 +129,7 @@ test.describe('Component observers', () => {
             });
 
             await page.setContent('<x-light></x-light>');
-            await page.waitForFunction(() => document.querySelector('#light')?.component?.loaded === true);
+            await page.waitForFunction(() => document.querySelector('#light')?.[window.Component.componentSymbol]?.loaded === true);
 
             await page.evaluate(() => {
                 window.Component.bootstrap();
@@ -226,7 +226,7 @@ test.describe('Component observers', () => {
                 document.body.appendChild(window._parent);
             });
 
-            await page.waitForFunction(() => document.querySelector('span')?.component?.loaded === true);
+            await page.waitForFunction(() => document.querySelector('span')?.[window.Component.componentSymbol]?.loaded === true);
 
             await page.evaluate(() => {
                 window._parent.state.label = 'second';
@@ -293,7 +293,7 @@ test.describe('Component observers', () => {
                 document.body.appendChild(parent);
             });
 
-            await page.waitForFunction(() => document.querySelector('#leaf')?.component?.loaded === true);
+            await page.waitForFunction(() => document.querySelector('#leaf')?.[window.Component.componentSymbol]?.loaded === true);
             expect(await page.evaluate(() => window._mountEvents)).toEqual([
                 'parent:mounted',
                 'child:mounted',
@@ -301,8 +301,8 @@ test.describe('Component observers', () => {
 
             await page.evaluate(() => {
                 const leaf = document.querySelector('#leaf');
-                const child = leaf.component;
-                const parent = child.component;
+                const child = leaf[window.Component.componentSymbol];
+                const parent = child[window.Component.componentSymbol];
 
                 window._ownershipEvents = [];
                 child.addEventListener('invisible', () => window._ownershipEvents.push('child:invisible'));
@@ -452,8 +452,8 @@ test.describe('Component observers', () => {
                 window._ioCallback([{ target: root, isIntersecting: false }]);
 
                 const events = [];
-                root.component.addEventListener('visible', () => events.push('visible'));
-                root.component.addEventListener('invisible', () => events.push('invisible'));
+                root[window.Component.componentSymbol].addEventListener('visible', () => events.push('visible'));
+                root[window.Component.componentSymbol].addEventListener('invisible', () => events.push('invisible'));
 
                 window._ioCallback([{ target: root, isIntersecting: true }]);
                 window._ioCallback([{ target: root, isIntersecting: false }]);
@@ -471,26 +471,26 @@ test.describe('Component observers', () => {
             await page.waitForFunction(() => {
                 const root = document.querySelector('[x\\:component="x-component"]');
                 return root &&
-                    root.component &&
-                    root.component.initialized === true &&
-                    root.component.mounted === true;
+                    root[window.Component.componentSymbol] &&
+                    root[window.Component.componentSymbol].initialized === true &&
+                    root[window.Component.componentSymbol].mounted === true;
             });
 
             await page.evaluate(() => {
                 const root = document.querySelector('[x\\:component="x-component"]');
-                const component = root.component;
+                const component = root[window.Component.componentSymbol];
                 component.dispatchEvent(new Event('invisible'));
             });
 
             await page.waitForFunction(() => {
                 const root = document.querySelector('[x\\:component="x-component"]');
-                const component = root.component;
+                const component = root[window.Component.componentSymbol];
                 return !component.visible;
             });
 
             const stateBeforeVisible = await page.evaluate(() => {
                 const root = document.querySelector('[x\\:component="x-component"]');
-                const component = root.component;
+                const component = root[window.Component.componentSymbol];
 
                 component.state.count = 0;
                 component._runs = 0;
@@ -509,19 +509,19 @@ test.describe('Component observers', () => {
 
             await page.evaluate(() => {
                 const root = document.querySelector('[x\\:component="x-component"]');
-                const component = root.component;
+                const component = root[window.Component.componentSymbol];
                 component.dispatchEvent(new Event('visible'));
             });
 
             await page.waitForFunction(() => {
                 const root = document.querySelector('[x\\:component="x-component"]');
-                const component = root.component;
+                const component = root[window.Component.componentSymbol];
                 return component.visible;
             });
 
             const stateAfterVisible = await page.evaluate(() => {
                 const root = document.querySelector('[x\\:component="x-component"]');
-                const component = root.component;
+                const component = root[window.Component.componentSymbol];
                 return {
                     runs: component._runs,
                 };

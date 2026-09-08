@@ -128,7 +128,7 @@ test.describe('Shadow components', () => {
 
             await page.waitForFunction(() => {
                 const root = document.querySelector('[x\\:component="x-nested"]');
-                return root && root.component && root.component.loaded === true;
+                return root && root[window.Component.componentSymbol] && root[window.Component.componentSymbol].loaded === true;
             });
 
             await expect(page.locator('x-nested')).toHaveCount(0);

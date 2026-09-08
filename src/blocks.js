@@ -4,7 +4,7 @@ import { bind } from './bind.js';
 import DOMRegion from './dom-region.js';
 import EffectScope from './effect-scope.js';
 import { evaluator } from './evaluator.js';
-import { isComponent, skipSubtree } from './helpers.js';
+import { callDOMMethod, getDOMProperty, isComponent, skipSubtree } from './helpers.js';
 import { setInitialState } from './state.js';
 
 /**
@@ -31,21 +31,21 @@ import { setInitialState } from './state.js';
  * @returns {[ConditionalCase[][], LoopBlock[]]} The collected conditionals and loops.
  */
 export function parseBlocks(element, conditionals = [], loops = []) {
-    const end = element.nodeType === Node.COMMENT_NODE ? element.fallback.end : null;
-    const walker = document.createTreeWalker(
-        end ? element.parentNode : element,
+    const end = getDOMProperty(element, 'nodeType') === Node.COMMENT_NODE ? element.fallback.end : null;
+    const walker = callDOMMethod(document, 'createTreeWalker',
+        end ? getDOMProperty(element, 'parentNode') : element,
         NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_COMMENT,
         {
             acceptNode(node) {
-                if (node.nodeType === Node.COMMENT_NODE) {
+                if (getDOMProperty(node, 'nodeType') === Node.COMMENT_NODE) {
                     return node === end || node.fallback ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
                 }
 
-                if (node.hasAttribute('x:else') || node.hasAttribute('x:else-if')) {
+                if (callDOMMethod(node, 'hasAttribute', 'x:else') || callDOMMethod(node, 'hasAttribute', 'x:else-if')) {
                     return NodeFilter.FILTER_REJECT;
                 }
 
-                return (node.hasAttribute('x:if') || node.hasAttribute('x:each')) ?
+                return (callDOMMethod(node, 'hasAttribute', 'x:if') || callDOMMethod(node, 'hasAttribute', 'x:each')) ?
                     NodeFilter.FILTER_ACCEPT :
                     NodeFilter.FILTER_SKIP;
             },
@@ -56,7 +56,7 @@ export function parseBlocks(element, conditionals = [], loops = []) {
     walker.currentNode = element;
     let node = walker.nextNode();
     while (node && node !== end) {
-        if (node.nodeType === Node.COMMENT_NODE) {
+        if (getDOMProperty(node, 'nodeType') === Node.COMMENT_NODE) {
             walker.currentNode = node.fallback.end;
             node = walker.nextNode();
         } else {
@@ -66,8 +66,8 @@ export function parseBlocks(element, conditionals = [], loops = []) {
     }
 
     for (const node of nodes) {
-        const hasConditional = node.hasAttribute('x:if');
-        const hasLoop = node.hasAttribute('x:each');
+        const hasConditional = callDOMMethod(node, 'hasAttribute', 'x:if');
+        const hasLoop = callDOMMethod(node, 'hasAttribute', 'x:each');
 
         if (hasConditional && hasLoop) {
             throw new Error('Conditional elements cannot be looped');
@@ -89,42 +89,42 @@ export function parseBlocks(element, conditionals = [], loops = []) {
  * @returns {ConditionalCase[]} The conditional cases for the element.
  */
 function parseConditional(element) {
-    const condition = element.getAttribute('x:if');
-    element.removeAttribute('x:if');
+    const condition = callDOMMethod(element, 'getAttribute', 'x:if');
+    callDOMMethod(element, 'removeAttribute', 'x:if');
 
-    const start = document.createComment(`if[${condition}]`);
-    const end = document.createComment(`/if[${condition}]`);
+    const start = callDOMMethod(document, 'createComment', `if[${condition}]`);
+    const end = callDOMMethod(document, 'createComment', `/if[${condition}]`);
 
-    element.before(start);
-    element.after(end);
+    callDOMMethod(element, 'before', start);
+    callDOMMethod(element, 'after', end);
 
     const cases = [];
     cases.push({ condition, element, start, end });
 
     let next = element;
-    while (next = next.nextElementSibling) {
-        if (next.hasAttribute('x:else-if')) {
-            const condition = next.getAttribute('x:else-if');
-            next.removeAttribute('x:else-if');
+    while (next = getDOMProperty(next, 'nextElementSibling')) {
+        if (callDOMMethod(next, 'hasAttribute', 'x:else-if')) {
+            const condition = callDOMMethod(next, 'getAttribute', 'x:else-if');
+            callDOMMethod(next, 'removeAttribute', 'x:else-if');
 
-            const start = document.createComment(`else-if[${condition}]`);
-            const end = document.createComment(`/else-if[${condition}]`);
+            const start = callDOMMethod(document, 'createComment', `else-if[${condition}]`);
+            const end = callDOMMethod(document, 'createComment', `/else-if[${condition}]`);
 
-            next.before(start);
-            next.after(end);
+            callDOMMethod(next, 'before', start);
+            callDOMMethod(next, 'after', end);
 
             cases.push({ condition, element: next, start, end });
             continue;
         }
 
-        if (next.hasAttribute('x:else')) {
-            next.removeAttribute('x:else');
+        if (callDOMMethod(next, 'hasAttribute', 'x:else')) {
+            callDOMMethod(next, 'removeAttribute', 'x:else');
 
-            const start = document.createComment(`else`);
-            const end = document.createComment(`/else`);
+            const start = callDOMMethod(document, 'createComment', `else`);
+            const end = callDOMMethod(document, 'createComment', `/else`);
 
-            next.before(start);
-            next.after(end);
+            callDOMMethod(next, 'before', start);
+            callDOMMethod(next, 'after', end);
 
             cases.push({ condition: '{true}', element: next, start, end });
         }
@@ -133,7 +133,7 @@ function parseConditional(element) {
     }
 
     return cases.map(({ condition, element, start, end }) => {
-        start.slot = element.getAttribute('slot') || '';
+        start.slot = callDOMMethod(element, 'getAttribute', 'slot') || '';
         end.slot = start.slot;
 
         const region = new DOMRegion(start, end);
@@ -149,23 +149,24 @@ function parseConditional(element) {
  * @returns {LoopBlock} The parsed loop metadata.
  */
 function parseLoop(element) {
-    if (!isComponent(element.localName)) {
+    if (!isComponent(getDOMProperty(element, 'localName'))) {
         throw new Error('Loop elements must be components');
     }
 
-    const iterable = element.getAttribute('x:each') || 'items';
-    const identifier = element.getAttribute('x:id') || 'id';
-    element.removeAttribute('x:each');
-    element.removeAttribute('x:id');
+    const iterable = callDOMMethod(element, 'getAttribute', 'x:each') || 'items';
+    const identifier = callDOMMethod(element, 'getAttribute', 'x:id') || 'id';
+    callDOMMethod(element, 'removeAttribute', 'x:each');
+    callDOMMethod(element, 'removeAttribute', 'x:id');
 
-    const start = document.createComment(`each[${iterable}]`);
-    const end = document.createComment(`/each[${iterable}]`);
-    start.slot = element.getAttribute('slot') || '';
+    const start = callDOMMethod(document, 'createComment', `each[${iterable}]`);
+    const end = callDOMMethod(document, 'createComment', `/each[${iterable}]`);
+    start.slot = callDOMMethod(element, 'getAttribute', 'slot') || '';
     end.slot = start.slot;
 
-    element.parentNode.insertBefore(start, element);
-    element.parentNode.insertBefore(end, element);
-    element.remove();
+    const parent = getDOMProperty(element, 'parentNode');
+    callDOMMethod(parent, 'insertBefore', start, element);
+    callDOMMethod(parent, 'insertBefore', end, element);
+    callDOMMethod(element, 'remove');
 
     return { iterable, identifier, element, start, end };
 };
@@ -264,7 +265,7 @@ export function processLoops(component, loops) {
                         setInitialState(loopComponent, state);
                     }
                 } else {
-                    const loopComponent = element.cloneNode(true);
+                    const loopComponent = callDOMMethod(element, 'cloneNode', true);
                     setInitialState(loopComponent, item);
 
                     const [nestedConditionals, nestedLoops] = parseBlocks(loopComponent);
@@ -276,17 +277,17 @@ export function processLoops(component, loops) {
                     });
 
                     // Keep row boundaries when a component replaces or unwraps its root.
-                    const region = new DOMRegion(document.createComment('item'), document.createComment('/item'));
+                    const region = new DOMRegion(callDOMMethod(document, 'createComment', 'item'), callDOMMethod(document, 'createComment', '/item'));
                     region.start.slot = start.slot;
                     region.end.slot = end.slot;
 
-                    const fragment = document.createDocumentFragment();
-                    fragment.append(region.start, loopComponent, region.end);
+                    const fragment = callDOMMethod(document, 'createDocumentFragment');
+                    callDOMMethod(fragment, 'append', region.start, loopComponent, region.end);
 
                     record = { component: loopComponent, dispose, region };
                 }
 
-                record.region.moveBefore(previousNode.nextSibling);
+                record.region.moveBefore(getDOMProperty(previousNode, 'nextSibling'));
                 previousNode = record.region.end;
 
                 record.stateKeys = Object.keys(item);

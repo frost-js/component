@@ -1,6 +1,6 @@
 import Component from './component.js';
 import { createFunction } from './evaluator.js';
-import { isComponent } from './helpers.js';
+import { callDOMMethod, getDOMProperty, isComponent } from './helpers.js';
 import { setShadowAssets } from './shadow-assets.js';
 
 const loadedScripts = new Map();
@@ -12,20 +12,22 @@ const loadingComponents = new Set();
  * @param {Document|Element} [root=document] The root whose resources should be registered.
  */
 export function registerLoadedResources(root = document) {
-    for (const script of root.querySelectorAll('script[src]')) {
-        if (!script.getAttribute('src')?.trim() || loadedScripts.has(script.src)) {
+    for (const script of callDOMMethod(root, 'querySelectorAll', 'script[src]')) {
+        const src = getDOMProperty(script, 'src');
+        if (!callDOMMethod(script, 'getAttribute', 'src')?.trim() || loadedScripts.has(src)) {
             continue;
         }
 
-        loadedScripts.set(script.src, Promise.resolve());
+        loadedScripts.set(src, Promise.resolve());
     }
 
-    for (const stylesheet of root.querySelectorAll('link[rel="stylesheet"]')) {
-        if (!stylesheet.getAttribute('href')?.trim() || loadedStylesheets.has(stylesheet.href)) {
+    for (const stylesheet of callDOMMethod(root, 'querySelectorAll', 'link[rel="stylesheet"]')) {
+        const href = getDOMProperty(stylesheet, 'href');
+        if (!callDOMMethod(stylesheet, 'getAttribute', 'href')?.trim() || loadedStylesheets.has(href)) {
             continue;
         }
 
-        loadedStylesheets.set(stylesheet.href, Promise.resolve());
+        loadedStylesheets.set(href, Promise.resolve());
     }
 };
 
@@ -35,19 +37,19 @@ export function registerLoadedResources(root = document) {
  * @returns {'open'|'closed'|null} The parsed shadow mode, or `null` if none was declared.
  */
 function parseShadowMode(container) {
-    for (const node of [...container.childNodes]) {
-        if (node.nodeType !== Node.COMMENT_NODE) {
+    for (const node of [...getDOMProperty(container, 'childNodes')]) {
+        if (getDOMProperty(node, 'nodeType') !== Node.COMMENT_NODE) {
             continue;
         }
 
-        const value = node.nodeValue?.trim().toLowerCase();
+        const value = getDOMProperty(node, 'nodeValue')?.trim().toLowerCase();
         if (value === 'shadow' || value === 'shadow:open') {
-            node.remove();
+            callDOMMethod(node, 'remove');
             return 'open';
         }
 
         if (value === 'shadow:closed') {
-            node.remove();
+            callDOMMethod(node, 'remove');
             return 'closed';
         }
     }
@@ -61,9 +63,9 @@ function parseShadowMode(container) {
  * @returns {Promise<void>} A promise that resolves once the resource has loaded.
  */
 function loadResource(element) {
-    const isScript = element.localName === 'script';
+    const isScript = getDOMProperty(element, 'localName') === 'script';
     const cache = isScript ? loadedScripts : loadedStylesheets;
-    const url = isScript ? element.src : element.href;
+    const url = isScript ? getDOMProperty(element, 'src') : getDOMProperty(element, 'href');
 
     if (cache.has(url)) {
         return cache.get(url);
@@ -72,14 +74,14 @@ function loadResource(element) {
     const promise = new Promise((resolve, reject) => {
         element.onload = () => resolve();
         element.onerror = () => {
-            element.remove();
+            callDOMMethod(element, 'remove');
             cache.delete(url);
             reject(new Error(`Failed to load ${isScript ? 'script' : 'stylesheet'} "${url}"`));
         };
     });
 
     cache.set(url, promise);
-    document.head.appendChild(element);
+    callDOMMethod(getDOMProperty(document, 'head'), 'appendChild', element);
 
     return promise;
 };
@@ -100,45 +102,45 @@ function define(tagName, html, templateUrl) {
         throw new Error('Element has already been defined');
     }
 
-    const container = document.createElement('div');
+    const container = callDOMMethod(document, 'createElement', 'div');
     container.innerHTML = html;
     const componentShadowMode = parseShadowMode(container);
 
-    const elements = container.querySelectorAll(':scope > :not(script, link[rel="stylesheet"], style)');
+    const elements = callDOMMethod(container, 'querySelectorAll', ':scope > :not(script, link[rel="stylesheet"], style)');
 
     if (elements.length != 1) {
         throw new Error('Components must render a single element');
     }
 
-    if (elements[0].matches('slot')) {
+    if (callDOMMethod(elements[0], 'matches', 'slot')) {
         throw new Error('Components cannot render a root slot element');
     }
 
-    if (elements[0].matches('x-suspense')) {
+    if (callDOMMethod(elements[0], 'matches', 'x-suspense')) {
         throw new Error('Components cannot render a root x-suspense element');
     }
 
-    const sourceScripts = container.querySelectorAll(':scope > script[src]');
-    const connectedScripts = container.querySelectorAll(':scope > script[connected]:not([src])');
-    const initializedScripts = container.querySelectorAll(':scope > script:not([connected], [src])');
-    const stylesheets = container.querySelectorAll(':scope > link[rel="stylesheet"]');
-    const styleBlocks = container.querySelectorAll(':scope > style');
+    const sourceScripts = callDOMMethod(container, 'querySelectorAll', ':scope > script[src]');
+    const connectedScripts = callDOMMethod(container, 'querySelectorAll', ':scope > script[connected]:not([src])');
+    const initializedScripts = callDOMMethod(container, 'querySelectorAll', ':scope > script:not([connected], [src])');
+    const stylesheets = callDOMMethod(container, 'querySelectorAll', ':scope > link[rel="stylesheet"]');
+    const styleBlocks = callDOMMethod(container, 'querySelectorAll', ':scope > style');
 
     // load scripts
     const promises = [];
 
     for (const sourceScript of sourceScripts) {
-        const source = sourceScript.getAttribute('src')?.trim();
+        const source = callDOMMethod(sourceScript, 'getAttribute', 'src')?.trim();
 
         if (!source) {
             continue;
         }
 
         const src = new URL(source, templateUrl).href;
-        const script = document.createElement('script');
+        const script = callDOMMethod(document, 'createElement', 'script');
 
-        script.setAttribute('src', src);
-        script.setAttribute('type', 'text/javascript');
+        callDOMMethod(script, 'setAttribute', 'src', src);
+        callDOMMethod(script, 'setAttribute', 'type', 'text/javascript');
         script.async = false;
 
         promises.push(loadResource(script));
@@ -146,14 +148,14 @@ function define(tagName, html, templateUrl) {
 
     // load stylesheets/style blocks
     for (const stylesheet of stylesheets) {
-        const source = stylesheet.getAttribute('href')?.trim();
+        const source = callDOMMethod(stylesheet, 'getAttribute', 'href')?.trim();
 
         if (!source) {
             continue;
         }
 
         const href = new URL(source, templateUrl).href;
-        stylesheet.setAttribute('href', href);
+        callDOMMethod(stylesheet, 'setAttribute', 'href', href);
 
         if (componentShadowMode) {
             continue;
@@ -164,7 +166,7 @@ function define(tagName, html, templateUrl) {
 
     if (!componentShadowMode) {
         for (const styleBlock of styleBlocks) {
-            document.head.appendChild(styleBlock);
+            callDOMMethod(getDOMProperty(document, 'head'), 'appendChild', styleBlock);
         }
     }
 
@@ -179,7 +181,7 @@ function define(tagName, html, templateUrl) {
                     createFunction(
                         tagName,
                         ['script', `initialized-${index}`],
-                        script.innerText,
+                        getDOMProperty(script, 'innerText'),
                     ).call(this);
                 }
             }
@@ -191,13 +193,13 @@ function define(tagName, html, templateUrl) {
                     createFunction(
                         tagName,
                         ['script', `connected-${index}`],
-                        script.innerText,
+                        getDOMProperty(script, 'innerText'),
                     ).call(this);
                 }
             }
 
             render() {
-                return elements[0].cloneNode(true);
+                return callDOMMethod(elements[0], 'cloneNode', true);
             }
         };
 
@@ -223,11 +225,11 @@ export function load(nodes, { baseUrl = null, extension = null } = {}) {
     }
 
     for (const node of nodes) {
-        if (node.nodeType !== Node.ELEMENT_NODE) {
+        if (getDOMProperty(node, 'nodeType') !== Node.ELEMENT_NODE) {
             continue;
         }
 
-        const tagName = node.localName;
+        const tagName = getDOMProperty(node, 'localName');
 
         if (!isComponent(tagName) || customElements.get(tagName)) {
             continue;

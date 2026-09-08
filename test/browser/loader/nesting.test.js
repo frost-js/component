@@ -129,7 +129,7 @@ test.describe('Nested component autoload', () => {
 
             await page.waitForFunction(() => {
                 const child = document.querySelector('[x\\:component="x-child"]');
-                return child && child.component && child.component.loaded === true && window._events.length === 3;
+                return child && child[window.Component.componentSymbol] && child[window.Component.componentSymbol].loaded === true && window._events.length === 3;
             });
 
             const events = await page.evaluate(() => window._events || []);
@@ -168,7 +168,7 @@ test.describe('Nested component autoload', () => {
 
             await page.waitForFunction(() => {
                 const root = document.querySelector('[x\\:component="x-parent"]');
-                return root && root.component && root.component.loaded === true;
+                return root && root[window.Component.componentSymbol] && root[window.Component.componentSymbol].loaded === true;
             });
 
             const events = await page.evaluate(() => window._events || []);
@@ -207,7 +207,7 @@ test.describe('Nested component autoload', () => {
 
             await page.waitForFunction(() => {
                 const root = document.querySelector('[x\\:component="x-parent"]');
-                return root && root.component && root.component.loaded === true;
+                return root && root[window.Component.componentSymbol] && root[window.Component.componentSymbol].loaded === true;
             });
 
             const events = await page.evaluate(() => window._events || []);
@@ -262,7 +262,7 @@ test.describe('Nested component autoload', () => {
 
             await page.waitForFunction(() => {
                 const root = document.querySelector('[x\\:component="x-parent"]');
-                return root && root.component && root.component.loaded === true;
+                return root && root[window.Component.componentSymbol] && root[window.Component.componentSymbol].loaded === true;
             });
 
             const events = await page.evaluate(() => window._events || []);

@@ -1,7 +1,7 @@
 /** @import { default as Component } from './component.js'; */
 
 import { createFunction } from './evaluator.js';
-import { isPlainObject } from './helpers.js';
+import { callDOMMethod, getDOMProperty, isPlainObject } from './helpers.js';
 
 const initialStates = new WeakMap();
 
@@ -34,8 +34,11 @@ function consumeInitialState(component) {
  * @param {Component} component The component to populate with state.
  */
 export function parseState(component) {
-    for (const attr of [...component.attributes]) {
-        if (attr.name === 'slot' || attr.name.startsWith('x:')) {
+    for (const attr of [...getDOMProperty(component, 'attributes')]) {
+        const name = getDOMProperty(attr, 'name');
+        const attributeValue = getDOMProperty(attr, 'value');
+
+        if (name === 'slot' || name.startsWith('x:')) {
             continue;
         }
 
@@ -43,20 +46,20 @@ export function parseState(component) {
         try {
             value = createFunction(
                 component,
-                ['state', attr.name],
-                `return ${attr.value};`,
+                ['state', name],
+                `return ${attributeValue};`,
             ).call(component);
         } catch {
-            value = attr.value;
+            value = attributeValue;
         }
 
-        if (attr.name === 'state' && isPlainObject(value)) {
+        if (name === 'state' && isPlainObject(value)) {
             component.state.set(value);
         } else {
-            component.state[attr.name] = value;
+            component.state[name] = value;
         }
 
-        component.removeAttribute(attr.name);
+        callDOMMethod(component, 'removeAttribute', name);
     }
 
     const initialState = consumeInitialState(component);

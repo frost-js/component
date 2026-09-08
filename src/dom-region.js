@@ -1,3 +1,5 @@
+import { callDOMMethod, getDOMProperty } from './helpers.js';
+
 /**
  * Keeps a group of DOM nodes between stable comment markers.
  */
@@ -18,9 +20,10 @@ export default class DOMRegion {
      * Detaches the content while leaving the markers in place.
      */
     hide() {
-        this.#fragment ??= document.createDocumentFragment();
-        while (this.start.nextSibling !== this.end) {
-            this.#fragment.appendChild(this.start.nextSibling);
+        this.#fragment ??= callDOMMethod(document, 'createDocumentFragment');
+        let node;
+        while ((node = getDOMProperty(this.start, 'nextSibling')) !== this.end) {
+            callDOMMethod(this.#fragment, 'appendChild', node);
         }
     }
 
@@ -29,11 +32,11 @@ export default class DOMRegion {
      * @param {Node} node The node to insert before.
      */
     moveBefore(node) {
-        if (node === this.start || this.end.nextSibling === node) {
+        if (node === this.start || getDOMProperty(this.end, 'nextSibling') === node) {
             return;
         }
 
-        node.before(this.#getRange().extractContents());
+        callDOMMethod(node, 'before', this.#getRange().extractContents());
     }
 
     /**
@@ -47,8 +50,8 @@ export default class DOMRegion {
      * Restores hidden content without moving content that is already shown.
      */
     show() {
-        if (this.#fragment?.hasChildNodes()) {
-            this.end.before(this.#fragment);
+        if (this.#fragment && callDOMMethod(this.#fragment, 'hasChildNodes')) {
+            callDOMMethod(this.end, 'before', this.#fragment);
         }
     }
 
@@ -57,7 +60,7 @@ export default class DOMRegion {
      * @returns {Range} The region's current DOM range.
      */
     #getRange() {
-        const range = document.createRange();
+        const range = callDOMMethod(document, 'createRange');
         range.setStartBefore(this.start);
         range.setEndAfter(this.end);
         return range;

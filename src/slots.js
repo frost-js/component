@@ -5,6 +5,7 @@ import { bind } from './bind.js';
 import { parseBlocks, processConditionals, processLoops } from './blocks.js';
 import DOMRegion from './dom-region.js';
 import EffectScope from './effect-scope.js';
+import { callDOMMethod, getDOMProperty } from './helpers.js';
 
 /**
  * @typedef {object} SlotDefinition
@@ -20,30 +21,30 @@ import EffectScope from './effect-scope.js';
  * @returns {Record<string, SlotDefinition>} The slot map keyed by slot name.
  */
 export function parseSlots(element) {
-    const slotMarkers = [...element.querySelectorAll('slot')]
+    const slotMarkers = [...callDOMMethod(element, 'querySelectorAll', 'slot')]
         .map((slot) => {
-            const name = slot.getAttribute('name') || '';
+            const name = callDOMMethod(slot, 'getAttribute', 'name') || '';
 
-            const start = document.createComment(`slot[${name}]`);
-            const end = document.createComment(`/slot[${name}]`);
+            const start = callDOMMethod(document, 'createComment', `slot[${name}]`);
+            const end = callDOMMethod(document, 'createComment', `/slot[${name}]`);
 
-            const fallback = slot.hasChildNodes() ? createFallback(start, end) : null;
+            const fallback = callDOMMethod(slot, 'hasChildNodes') ? createFallback(start, end) : null;
             start.fallback = fallback;
 
             const assign = (node) => {
-                if (!end.parentNode) {
+                if (!getDOMProperty(end, 'parentNode')) {
                     return;
                 }
 
-                end.before(node);
+                callDOMMethod(end, 'before', node);
                 fallback?.update();
             };
 
             const assigned = () => {
                 let current = start;
                 const nodes = [];
-                while (current = current.nextSibling) {
-                    if (current.isSameNode(end)) {
+                while (current = getDOMProperty(current, 'nextSibling')) {
+                    if (callDOMMethod(current, 'isSameNode', end)) {
                         break;
                     }
 
@@ -55,17 +56,19 @@ export function parseSlots(element) {
                 return nodes;
             };
 
-            slot.parentNode.insertBefore(start, slot);
-            while (slot.firstChild) {
-                slot.parentNode.insertBefore(slot.firstChild, slot);
+            const parent = getDOMProperty(slot, 'parentNode');
+            callDOMMethod(parent, 'insertBefore', start, slot);
+            let child;
+            while (child = getDOMProperty(slot, 'firstChild')) {
+                callDOMMethod(parent, 'insertBefore', child, slot);
             }
 
             if (fallback) {
-                slot.parentNode.insertBefore(fallback.end, slot);
+                callDOMMethod(parent, 'insertBefore', fallback.end, slot);
             }
 
-            slot.parentNode.insertBefore(end, slot);
-            slot.remove();
+            callDOMMethod(parent, 'insertBefore', end, slot);
+            callDOMMethod(slot, 'remove');
 
             return [name, { start, end, assign, assigned }];
         });
@@ -80,7 +83,7 @@ export function parseSlots(element) {
  * @returns {object} The fallback boundary and its binding and update callbacks.
  */
 function createFallback(start, end) {
-    const fallbackEnd = document.createComment('/fallback');
+    const fallbackEnd = callDOMMethod(document, 'createComment', '/fallback');
     const region = new DOMRegion(start, fallbackEnd);
     const active = useState(true);
     let initialized = false;
@@ -88,8 +91,9 @@ function createFallback(start, end) {
 
     const hasContent = () => {
         let current = fallbackEnd;
-        while ((current = current.nextSibling) && current !== end) {
-            if (current.nodeType === Node.ELEMENT_NODE || current.nodeType === Node.TEXT_NODE) {
+        while ((current = getDOMProperty(current, 'nextSibling')) && current !== end) {
+            const nodeType = getDOMProperty(current, 'nodeType');
+            if (nodeType === Node.ELEMENT_NODE || nodeType === Node.TEXT_NODE) {
                 return true;
             }
         }
@@ -111,9 +115,10 @@ function createFallback(start, end) {
         }
 
         // Blocks insert content directly between their assigned comment markers.
-        if (end.parentNode) {
+        const parent = getDOMProperty(end, 'parentNode');
+        if (parent) {
             observer ??= new MutationObserver(update);
-            observer.observe(end.parentNode, { childList: true });
+            observer.observe(parent, { childList: true });
         }
     };
 
@@ -152,12 +157,11 @@ function createFallback(start, end) {
  * @param {Component} component The component whose children are slotted.
  */
 export function processSlots(component) {
-    for (const element of [...component.childNodes]) {
+    for (const element of [...getDOMProperty(component, 'childNodes')]) {
         // Block comments carry the same slot name as their content.
-        let name = element.slot || '';
-        if (element.nodeType === Node.ELEMENT_NODE) {
-            name = element.getAttribute('slot') || '';
-        }
+        const name = getDOMProperty(element, 'nodeType') === Node.ELEMENT_NODE ?
+            callDOMMethod(element, 'getAttribute', 'slot') || '' :
+            element.slot || '';
 
         const slot = component.getSlot(name);
 

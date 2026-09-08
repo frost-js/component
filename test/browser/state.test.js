@@ -10,9 +10,9 @@ test.describe('Component state', () => {
         const state = await page.evaluate(() => {
             const root = document.querySelector('[x\\:component="x-component"]');
             return {
-                count: root.component.state.count,
-                value: root.component.state.value,
-                label: root.component.state.label,
+                count: root[window.Component.componentSymbol].state.count,
+                value: root[window.Component.componentSymbol].state.value,
+                label: root[window.Component.componentSymbol].state.label,
             };
         });
 
@@ -26,7 +26,7 @@ test.describe('Component state', () => {
 
         const value = await page.evaluate(() => {
             const root = document.querySelector('[x\\:component="x-component"]');
-            return root.component.state.state;
+            return root[window.Component.componentSymbol].state.state;
         });
 
         expect(value).toBe(3);
@@ -39,7 +39,7 @@ test.describe('Component state', () => {
 
         const value = await page.evaluate(() => {
             const root = document.querySelector('[x\\:component="x-component"]');
-            return root.component.state.broken;
+            return root[window.Component.componentSymbol].state.broken;
         });
 
         expect(value).toBe('{ invalid');
@@ -53,7 +53,7 @@ test.describe('Component state', () => {
 
         const name = await page.evaluate(() => {
             const root = document.querySelector('[x\\:component="x-component"]');
-            return root.component.state.user.name;
+            return root[window.Component.componentSymbol].state.user.name;
         });
 
         expect(name).toBe('Grace');
@@ -71,8 +71,8 @@ test.describe('Component state', () => {
         await expect(roots).toHaveText(['1', '2', '1']);
 
         const values = await roots.evaluateAll((elements) => {
-            elements[0].component.state.value.count = 3;
-            return elements.map((element) => element.component.state.value.count);
+            elements[0][window.Component.componentSymbol].state.value.count = 3;
+            return elements.map((element) => element[window.Component.componentSymbol].state.value.count);
         });
 
         expect(values).toEqual([3, 2, 1]);

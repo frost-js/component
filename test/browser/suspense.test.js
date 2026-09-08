@@ -168,7 +168,7 @@ test.describe('Suspense component', () => {
 
             await page.waitForFunction(() => window._pending.length === 1);
             await page.evaluate(() => {
-                const suspense = document.querySelector('[x\\:component="x-suspense"]').component;
+                const suspense = document.querySelector('[x\\:component="x-suspense"]')[window.Component.componentSymbol];
                 suspense.getSlot().assign(document.createElement('x-delay'));
             });
             await page.waitForFunction(() => window._pending.length === 2);
@@ -417,7 +417,7 @@ test.describe('Suspense component', () => {
             await expect(page.locator('#parent > #child')).toBeVisible();
             await expect(page.locator('#parent > #content')).toBeVisible();
             await expect(page.locator('#fallback')).toHaveCount(0);
-            expect(await page.locator('#child').evaluate((element) => element.component === window._child)).toBe(true);
+            expect(await page.locator('#child').evaluate((element) => element[window.Component.componentSymbol] === window._child)).toBe(true);
             expect(errors).toEqual([]);
         });
 

@@ -3,7 +3,7 @@
 import { parseBlocks, processConditionals, processLoops } from './blocks.js';
 import EffectScope from './effect-scope.js';
 import { createFunction, evaluator } from './evaluator.js';
-import { findPropertyOwner, isComponent, isEmpty, isPlainObject, skipSubtree } from './helpers.js';
+import { callDOMMethod, componentSymbol, findPropertyOwner, getDOMProperty, isComponent, isEmpty, isPlainObject, skipSubtree } from './helpers.js';
 import { setInitialState } from './state.js';
 
 /**
@@ -67,18 +67,21 @@ const templateBindings = new WeakMap();
  * @param {Element|DocumentFragment|Comment} element The root element, template content, or fallback start marker to bind.
  */
 export function bind(component, element) {
-    if (element.component && element.component !== component) {
+    if (element[componentSymbol] && element[componentSymbol] !== component) {
         return;
     }
 
-    const end = element.nodeType === Node.COMMENT_NODE ? element.fallback.end : null;
-    const walker = document.createTreeWalker(
-        end ? element.parentNode : element,
+    const end = getDOMProperty(element, 'nodeType') === Node.COMMENT_NODE ? element.fallback.end : null;
+    const walker = callDOMMethod(document, 'createTreeWalker',
+        end ? getDOMProperty(element, 'parentNode') : element,
         NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT | NodeFilter.SHOW_COMMENT,
     );
 
     const bindElement = (node) => {
-        for (const { name, value } of [...node.attributes]) {
+        for (const attribute of [...getDOMProperty(node, 'attributes')]) {
+            const name = getDOMProperty(attribute, 'name');
+            const value = getDOMProperty(attribute, 'value');
+
             if (name.startsWith('.')) {
                 bindProperty(component, node, name, value);
             } else if (name.startsWith(':')) {
@@ -94,8 +97,8 @@ export function bind(component, element) {
     walker.currentNode = element;
     let node = end ? walker.nextNode() : element;
     while (node && node !== end) {
-        if (node.nodeType === Node.ELEMENT_NODE) {
-            if (node.component && node.component !== component) {
+        if (getDOMProperty(node, 'nodeType') === Node.ELEMENT_NODE) {
+            if (node[componentSymbol] && node[componentSymbol] !== component) {
                 // Skip subtrees owned by other components.
                 node = skipSubtree(walker);
                 continue;
@@ -107,7 +110,7 @@ export function bind(component, element) {
             if (node instanceof HTMLTemplateElement && !templateBindings.has(node)) {
                 templateBindings.set(node, { component, scope: EffectScope.get(component) });
             }
-        } else if (node.nodeType === Node.TEXT_NODE) {
+        } else if (getDOMProperty(node, 'nodeType') === Node.TEXT_NODE) {
             bindText(component, node);
         } else if (node.fallback) {
             node.fallback.bind(component);
@@ -126,7 +129,7 @@ export function bind(component, element) {
  */
 export function bindTemplate(component, template) {
     const binding = templateBindings.get(template) || { component, scope: EffectScope.get(component) };
-    const fragment = template.content.cloneNode(true);
+    const fragment = callDOMMethod(getDOMProperty(template, 'content'), 'cloneNode', true);
     let dispose = () => { };
 
     binding.scope.run(() => {
@@ -139,7 +142,7 @@ export function bindTemplate(component, template) {
         });
     });
 
-    template.replaceWith(fragment);
+    callDOMMethod(template, 'replaceWith', fragment);
     return dispose;
 };
 
@@ -151,7 +154,7 @@ export function bindTemplate(component, template) {
  * @param {string} value The attribute expression string.
  */
 function bindAttribute(component, element, name, value) {
-    element.removeAttribute(name);
+    callDOMMethod(element, 'removeAttribute', name);
 
     if (!value) {
         return;
@@ -160,7 +163,7 @@ function bindAttribute(component, element, name, value) {
     const attribute = name.slice(1);
     const callback = evaluator(component, value, ['attribute', attribute]);
 
-    if (isComponent(element.localName)) {
+    if (isComponent(getDOMProperty(element, 'localName'))) {
         component.effect(() => {
             const result = callback();
 
@@ -184,9 +187,10 @@ function bindAttribute(component, element, name, value) {
         case 'class':
             component.effect(() => {
                 const result = callback();
+                const classList = getDOMProperty(element, 'classList');
 
                 if (previous) {
-                    element.classList.remove(...previous);
+                    classList.remove(...previous);
                 }
 
                 if (isEmpty(result)) {
@@ -205,22 +209,23 @@ function bindAttribute(component, element, name, value) {
 
                 const classes = values.flatMap((value) => `${value}`.trim().split(/\s+/).filter(Boolean));
 
-                element.classList.add(...classes);
+                classList.add(...classes);
                 previous = classes.length ? classes : null;
             });
             break;
         case 'style':
             component.effect(() => {
                 const result = callback();
+                const style = getDOMProperty(element, 'style');
 
                 if (previous?.type === 'string') {
-                    element.style.cssText = '';
+                    style.cssText = '';
                 } else if (previous?.type === 'object') {
                     for (const key of previous.keys) {
                         if (key.startsWith('--') || key.includes('-')) {
-                            element.style.removeProperty(key);
+                            style.removeProperty(key);
                         } else {
-                            element.style[key] = '';
+                            style[key] = '';
                         }
                     }
                 }
@@ -231,9 +236,9 @@ function bindAttribute(component, element, name, value) {
                     for (const [key, value] of Object.entries(result)) {
                         if (!isEmpty(value)) {
                             if (key.startsWith('--') || key.includes('-')) {
-                                element.style.setProperty(key, value);
+                                style.setProperty(key, value);
                             } else {
-                                element.style[key] = value;
+                                style[key] = value;
                             }
                         }
                     }
@@ -243,7 +248,7 @@ function bindAttribute(component, element, name, value) {
                         type: 'object',
                     };
                 } else {
-                    element.style.cssText = result;
+                    style.cssText = result;
                     previous = { type: 'string' };
                 }
             });
@@ -253,11 +258,11 @@ function bindAttribute(component, element, name, value) {
                 const result = callback();
 
                 if (typeof result === 'boolean' && booleanAttributes.has(attribute)) {
-                    element.toggleAttribute(attribute, result);
+                    callDOMMethod(element, 'toggleAttribute', attribute, result);
                 } else if (isEmpty(result)) {
-                    element.removeAttribute(attribute);
+                    callDOMMethod(element, 'removeAttribute', attribute);
                 } else {
-                    element.setAttribute(attribute, result);
+                    callDOMMethod(element, 'setAttribute', attribute, result);
                 }
             });
             break;
@@ -272,7 +277,7 @@ function bindAttribute(component, element, name, value) {
  * @param {string} value The handler attribute value.
  */
 function bindEvent(component, element, name, value) {
-    element.removeAttribute(name);
+    callDOMMethod(element, 'removeAttribute', name);
 
     const params = name.slice(1).split('.');
     const eventName = params.shift();
@@ -341,26 +346,26 @@ function bindEvent(component, element, name, value) {
         passive: params.includes('passive'),
     };
 
-    const followElement = isComponent(element.localName) && !componentEvents.has(eventName);
+    const followElement = isComponent(getDOMProperty(element, 'localName')) && !componentEvents.has(eventName);
     let target = followElement && element.initialized ? element.element : element;
     const update = ({ detail }) => {
-        target.removeEventListener(eventName, handler, options);
+        callDOMMethod(target, 'removeEventListener', eventName, handler, options);
         target = detail.element;
 
         if (!once || !ran) {
-            target.addEventListener(eventName, handler, options);
+            callDOMMethod(target, 'addEventListener', eventName, handler, options);
         }
     };
 
-    target.addEventListener(eventName, handler, options);
+    callDOMMethod(target, 'addEventListener', eventName, handler, options);
 
     if (followElement) {
-        element.addEventListener('elementchange', update);
+        callDOMMethod(element, 'addEventListener', 'elementchange', update);
     }
 
     EffectScope.get(component).addCleanup(() => {
-        target.removeEventListener(eventName, handler, options);
-        element.removeEventListener('elementchange', update);
+        callDOMMethod(target, 'removeEventListener', eventName, handler, options);
+        callDOMMethod(element, 'removeEventListener', 'elementchange', update);
     });
 };
 
@@ -372,7 +377,7 @@ function bindEvent(component, element, name, value) {
  * @param {string} value The state key to bind.
  */
 function bindInput(component, element, name, value) {
-    element.removeAttribute(name);
+    callDOMMethod(element, 'removeAttribute', name);
 
     if (!value) {
         return;
@@ -380,44 +385,47 @@ function bindInput(component, element, name, value) {
 
     let update;
 
-    if (element.matches('input[type="checkbox"]')) {
+    if (callDOMMethod(element, 'matches', 'input[type="checkbox"]')) {
         component.state(value, false);
 
         update = () => {
             if (Array.isArray(component.state[value])) {
-                element.checked = component.state[value].includes(element.value);
+                element.checked = component.state[value].includes(getDOMProperty(element, 'value'));
             } else {
                 element.checked = !!component.state[value];
             }
         };
 
-        element.addEventListener('change', () => {
+        callDOMMethod(element, 'addEventListener', 'change', () => {
+            const checked = getDOMProperty(element, 'checked');
             if (Array.isArray(component.state[value])) {
-                if (element.checked) {
-                    if (!component.state[value].includes(element.value)) {
-                        component.state[value] = [...component.state[value], element.value];
+                const inputValue = getDOMProperty(element, 'value');
+                if (checked) {
+                    if (!component.state[value].includes(inputValue)) {
+                        component.state[value] = [...component.state[value], inputValue];
                     }
                 } else {
-                    component.state[value] = [...component.state[value].filter((value) => value != element.value)];
+                    component.state[value] = [...component.state[value].filter((value) => value != inputValue)];
                 }
             } else {
-                component.state[value] = element.checked;
+                component.state[value] = checked;
             }
         });
-    } else if (element.matches('input[type="radio"]')) {
+    } else if (callDOMMethod(element, 'matches', 'input[type="radio"]')) {
         update = () => {
-            element.checked = component.state[value] == element.value;
+            element.checked = component.state[value] == getDOMProperty(element, 'value');
         };
 
-        element.addEventListener('change', () => {
-            if (element.checked) {
-                component.state[value] = element.value;
-            } else if (component.state[value] == element.value) {
+        callDOMMethod(element, 'addEventListener', 'change', () => {
+            const inputValue = getDOMProperty(element, 'value');
+            if (getDOMProperty(element, 'checked')) {
+                component.state[value] = inputValue;
+            } else if (component.state[value] == inputValue) {
                 component.state[value] = undefined;
             }
         });
-    } else if (element.matches('input, select, textarea')) {
-        const multiple = element.matches('select[multiple]');
+    } else if (callDOMMethod(element, 'matches', 'input, select, textarea')) {
+        const multiple = callDOMMethod(element, 'matches', 'select[multiple]');
 
         if (multiple) {
             component.state(value, []);
@@ -426,8 +434,8 @@ function bindInput(component, element, name, value) {
         update = multiple ?
             () => {
                 const values = component.state[value];
-                for (const option of element.options) {
-                    option.selected = Array.isArray(values) && values.includes(option.value);
+                for (const option of getDOMProperty(element, 'options')) {
+                    option.selected = Array.isArray(values) && values.includes(getDOMProperty(option, 'value'));
                 }
             } :
             () => {
@@ -438,16 +446,16 @@ function bindInput(component, element, name, value) {
 
         const change = multiple ?
             () => {
-                component.state[value] = [...element.selectedOptions].map((option) => option.value);
+                component.state[value] = [...getDOMProperty(element, 'selectedOptions')].map((option) => getDOMProperty(option, 'value'));
             } :
             () => {
-                component.state[value] = element.value;
+                component.state[value] = getDOMProperty(element, 'value');
             };
 
-        element.addEventListener('change', change);
+        callDOMMethod(element, 'addEventListener', 'change', change);
 
         if (!multiple) {
-            element.addEventListener('input', change);
+            callDOMMethod(element, 'addEventListener', 'input', change);
         }
     }
 
@@ -457,9 +465,9 @@ function bindInput(component, element, name, value) {
 
     component.effect(update);
 
-    if (element.matches('input[type="checkbox"], input[type="radio"], select')) {
+    if (callDOMMethod(element, 'matches', 'input[type="checkbox"], input[type="radio"], select')) {
         // DOM value and option changes also affect the current selection.
-        const select = element.localName === 'select';
+        const select = getDOMProperty(element, 'localName') === 'select';
         const observer = new MutationObserver(update);
         observer.observe(element, {
             attributeFilter: ['value'],
@@ -479,7 +487,7 @@ function bindInput(component, element, name, value) {
  * @param {string} value The property expression string.
  */
 function bindProperty(component, element, name, value) {
-    element.removeAttribute(name);
+    callDOMMethod(element, 'removeAttribute', name);
 
     if (!value) {
         return;
@@ -487,11 +495,12 @@ function bindProperty(component, element, name, value) {
 
     const property = name.slice(1)
         .replace(/-([a-z])/g, (_, char) => char.toUpperCase());
+    const tagName = getDOMProperty(element, 'localName');
 
     const setup = () => {
         const owner = findPropertyOwner(element, property, { includeSelf: false });
         const customOwner = findPropertyOwner(
-            customElements.get(element.localName)?.prototype,
+            customElements.get(tagName)?.prototype,
             property,
             { stopAt: HTMLElement.prototype },
         );
@@ -507,11 +516,11 @@ function bindProperty(component, element, name, value) {
         });
     };
 
-    if (element.localName.includes('-') && !element.matches(':defined')) {
+    if (tagName.includes('-') && !callDOMMethod(element, 'matches', ':defined')) {
         const scope = EffectScope.get(component);
-        customElements.whenDefined(element.localName).then(() => scope.run(() => {
+        customElements.whenDefined(tagName).then(() => scope.run(() => {
             customElements.upgrade(element);
-            if (element.matches(':defined')) {
+            if (callDOMMethod(element, 'matches', ':defined')) {
                 setup();
             }
         }));
@@ -531,7 +540,7 @@ function bindText(component, node) {
         return;
     }
 
-    const raw = node.textContent;
+    const raw = getDOMProperty(node, 'textContent');
     if (!raw || !raw.includes('{')) {
         return;
     }

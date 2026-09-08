@@ -1,5 +1,7 @@
 /** @import { default as Component } from './component.js'; */
 
+import { getDOMProperty } from './helpers.js';
+
 const functionCache = new Map();
 
 /**
@@ -41,7 +43,7 @@ export function createFunction(component, path, body, parameters = []) {
     const source = JSON.stringify([...parameters, body]);
     const tagName = typeof component === 'string' ?
         component :
-        component.localName;
+        getDOMProperty(component, 'localName');
     const sourcePath = [tagName, ...path, `${hashSource(source)}.js`]
         .map(encodeURIComponent)
         .join('/');

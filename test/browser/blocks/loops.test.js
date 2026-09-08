@@ -70,7 +70,7 @@ test.describe('Component loops', () => {
                 const items = [...document.querySelectorAll('[x\\:component="x-parent"] .item')];
                 const markers = {};
                 for (const el of items) {
-                    const id = el.component?.state?.id;
+                    const id = el[window.Component.componentSymbol]?.state?.id;
                     const marker = `m-${Math.random().toString(36).slice(2)}`;
                     el._marker = marker;
                     markers[id] = marker;
@@ -83,7 +83,7 @@ test.describe('Component loops', () => {
             const reordered = await page.evaluate(() => {
                 return [...document.querySelectorAll('[x\\:component="x-parent"] .item')]
                     .map((el) => ({
-                        id: el.component?.state?.id,
+                        id: el[window.Component.componentSymbol]?.state?.id,
                         marker: el._marker,
                     }));
             });
@@ -152,7 +152,7 @@ test.describe('Component loops', () => {
             await expect(item).toHaveText('|kept');
 
             const stateWasPreserved = await item.evaluate((element) => {
-                return element.component.state.name === undefined && element.component.state.local === 'kept';
+                return element[window.Component.componentSymbol].state.name === undefined && element[window.Component.componentSymbol].state.local === 'kept';
             });
             expect(stateWasPreserved).toBe(true);
         });
@@ -278,11 +278,11 @@ test.describe('Component loops', () => {
                 await page.setContent('<x-parent items="[{ id: 1 }, { id: 2 }]"></x-parent>');
                 await page.waitForFunction(() => {
                     const leaves = [...document.querySelectorAll('x-leaf')];
-                    return leaves.length === 2 && leaves.every((leaf) => leaf.component?.initialized);
+                    return leaves.length === 2 && leaves.every((leaf) => leaf[window.Component.componentSymbol]?.initialized);
                 });
                 await page.evaluate((change) => {
-                    window._parent = document.querySelector('[x\\:component="x-parent"]').component;
-                    window._rows = [...document.querySelectorAll('x-leaf')].map((leaf) => leaf.component);
+                    window._parent = document.querySelector('[x\\:component="x-parent"]')[window.Component.componentSymbol];
+                    window._rows = [...document.querySelectorAll('x-leaf')].map((leaf) => leaf[window.Component.componentSymbol]);
                     window._updatedOnce = false;
 
                     class XLeaf extends window.Component {
@@ -310,8 +310,8 @@ test.describe('Component loops', () => {
                 await expect(page.locator('x-leaf')).toHaveCount(0);
                 if (change === 'reorders') {
                     expect(await page.locator('article').evaluateAll((elements) =>
-                        elements[0].component.parentComponent === window._rows[1] &&
-                        elements[1].component.parentComponent === window._rows[0],
+                        elements[0][window.Component.componentSymbol].parentComponent === window._rows[1] &&
+                        elements[1][window.Component.componentSymbol].parentComponent === window._rows[0],
                     )).toBe(true);
                 }
 
