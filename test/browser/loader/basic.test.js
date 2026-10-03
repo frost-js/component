@@ -2,7 +2,7 @@ import { expect, test } from '#test';
 import { mockComponents, mountComponent } from '../../support/utils.js';
 
 test.describe('Component autoload', () => {
-    test.describe('Fetching and registration', () => {
+    test.describe('fetching and registration', () => {
         test('autoloads a component via baseUrl', async ({ page }) => {
             await mockComponents(page, {
                 'x-auto': `
@@ -64,7 +64,7 @@ test.describe('Component autoload', () => {
         });
     });
 
-    test.describe('Inline scripts', () => {
+    test.describe('inline scripts', () => {
         test('runs connected scripts before initialized scripts', async ({ page }) => {
             await mockComponents(page, {
                 'x-scripts': `

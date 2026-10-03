@@ -2,7 +2,7 @@ import { expect, test } from '#test';
 import { mockComponents, mountComponent } from '../../support/utils.js';
 
 test.describe('Nested component autoload', () => {
-    test.describe('Templates and slots', () => {
+    test.describe('templates and slots', () => {
         test('autoloads nested components from a parent template', async ({ page }) => {
             await mockComponents(page, {
                 'x-parent': `
@@ -210,7 +210,7 @@ test.describe('Nested component autoload', () => {
         });
     });
 
-    test.describe('Blocks', () => {
+    test.describe('blocks', () => {
         test('autoloads conditional components from x:if blocks', async ({ page }) => {
             await mockComponents(page, {
                 'x-parent': `

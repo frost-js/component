@@ -33,7 +33,7 @@ export const callDOMMethod = (node, method, ...args) =>
  */
 export function isComponent(tagName) {
     return tagName.startsWith('x-');
-};
+}
 
 /**
  * Finds the components represented by a public DOM element.
@@ -59,7 +59,7 @@ export function findComponentChain(element) {
     }
 
     return owners;
-};
+}
 
 /**
  * Finds the parent component of a component.
@@ -100,7 +100,7 @@ export function findParent(component) {
     }
 
     return null;
-};
+}
 
 /**
  * Finds child components and the DOM subtrees that can change their membership.
@@ -137,7 +137,7 @@ export function findChildren(component, element) {
     visit(element);
 
     return { children, targets };
-};
+}
 
 /**
  * Flattens a node list into a list of element nodes and their descendants.
@@ -149,7 +149,7 @@ export function flattenElements(nodes) {
         [node, ...callDOMMethod(node, 'querySelectorAll', '*')] :
         [],
     );
-};
+}
 
 /**
  * Advances a TreeWalker to the next sibling outside the current subtree.
@@ -168,7 +168,7 @@ export function skipSubtree(walker) {
     }
 
     return null;
-};
+}
 
 /**
  * Waits for pending child components to load or be removed.
@@ -233,7 +233,7 @@ export function waitForChildren(component, element = component.rootElement) {
 
         check();
     });
-};
+}
 
 /**
  * Determines whether a value is null or undefined.
@@ -242,7 +242,7 @@ export function waitForChildren(component, element = component.rootElement) {
  */
 export function isEmpty(value) {
     return value === null || value === undefined;
-};
+}
 
 /**
  * Determines whether a value is a plain object.
@@ -251,7 +251,7 @@ export function isEmpty(value) {
  */
 export function isPlainObject(value) {
     return value?.constructor === Object;
-};
+}
 
 /**
  * Finds the object in a prototype chain that owns a property.
@@ -276,4 +276,4 @@ export function findPropertyOwner(target, property, { includeSelf = true, stopAt
     }
 
     return null;
-};
+}

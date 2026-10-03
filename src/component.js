@@ -200,7 +200,11 @@ export default class Component extends HTMLElement {
         const parentComponent = this.parentComponent;
 
         // don't initialize slot components until they have been assigned
-        if (parentComponent && callDOMMethod(parentComponent, 'contains', this) && parentComponent.renderRoot === parentComponent.rootElement) {
+        if (
+            parentComponent &&
+            callDOMMethod(parentComponent, 'contains', this) &&
+            parentComponent.renderRoot === parentComponent.rootElement
+        ) {
             callDOMMethod(parentComponent, 'addEventListener', 'initialized', () => {
                 if (this.#connected || !callDOMMethod(parentComponent, 'contains', this)) {
                     return;

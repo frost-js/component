@@ -27,7 +27,7 @@ function hashSource(source) {
 
     return (hash1 >>> 0).toString(16).padStart(8, '0') +
         (hash2 >>> 0).toString(16).padStart(8, '0');
-};
+}
 
 /**
  * Creates a dynamically compiled function with a stable virtual source URL.
@@ -66,7 +66,7 @@ export function createFunction(component, path, body, parameters = []) {
     }
 
     return callback;
-};
+}
 
 /**
  * Builds an evaluator for a binding expression.
@@ -93,4 +93,4 @@ export function evaluator(component, expression, source = ['expression'], defaul
     }
 
     return () => component.state(expression, defaultValue).value;
-};
+}

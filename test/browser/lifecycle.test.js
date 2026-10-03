@@ -2,7 +2,7 @@ import { expect, test } from '#test';
 import { attachMethod, defineComponent, flushTasks, mountComponent, updateState, waitForComponent } from '../support/utils.js';
 
 test.describe('Component lifecycle', () => {
-    test.describe('Initialization', () => {
+    test.describe('initialization', () => {
         test('initializes and replaces the custom element with its template', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<div></div>');
             await page.setContent('<x-component></x-component>');
@@ -136,30 +136,36 @@ test.describe('Component lifecycle', () => {
             });
         }
 
-        test('throws when a component is reattached after initialization', async ({ page }) => {
-            await defineComponent(page, 'x-component', 'XComponent', '<div></div>');
-
-            const component = await mountComponent(page, '<x-component></x-component>');
-
-            await page.waitForFunction((component) => {
-                return component.initialized === true;
-            }, component);
-
-            const errorPromise = page.waitForEvent('pageerror');
-            await component.evaluate((host) => {
-                const root = document.querySelector('[x\\:component="x-component"]');
-                const container = document.createElement('div');
-                document.body.appendChild(container);
-                container.appendChild(root);
-                document.body.removeChild(container);
-                document.body.appendChild(host);
+        test.describe(() => {
+            test.use({
+                expectedBrowserErrors: [expect.stringContaining('cannot be reattached after it has been initialized')],
             });
-            const error = await errorPromise;
-            expect(error.message).toContain('cannot be reattached after it has been initialized');
+
+            test('throws when a component is reattached after initialization', async ({ page }) => {
+                await defineComponent(page, 'x-component', 'XComponent', '<div></div>');
+
+                const component = await mountComponent(page, '<x-component></x-component>');
+
+                await page.waitForFunction((component) => {
+                    return component.initialized === true;
+                }, component);
+
+                const errorPromise = page.waitForEvent('pageerror');
+                await component.evaluate((host) => {
+                    const root = document.querySelector('[x\\:component="x-component"]');
+                    const container = document.createElement('div');
+                    document.body.appendChild(container);
+                    container.appendChild(root);
+                    document.body.removeChild(container);
+                    document.body.appendChild(host);
+                });
+                const error = await errorPromise;
+                expect(error.message).toContain('cannot be reattached after it has been initialized');
+            });
         });
     });
 
-    test.describe('Loading', () => {
+    test.describe('loading', () => {
         test('ready runs immediately when already loaded and waits otherwise', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<div></div>');
 
@@ -419,7 +425,7 @@ test.describe('Component lifecycle', () => {
         });
     });
 
-    test.describe('Effects', () => {
+    test.describe('effects', () => {
         test('runs effects when state changes and component is mounted', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<div></div>');
             const component = await mountComponent(page, '<x-component></x-component>');

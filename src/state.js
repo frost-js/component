@@ -15,7 +15,7 @@ export function setInitialState(component, values) {
 
     Object.assign(state, values);
     initialStates.set(component, state);
-};
+}
 
 /**
  * Consumes initial state values waiting for a component.
@@ -27,7 +27,7 @@ function consumeInitialState(component) {
 
     initialStates.delete(component);
     return state;
-};
+}
 
 /**
  * Parses component state from non-framework attributes and removes them from the host.
@@ -66,4 +66,4 @@ export function parseState(component) {
     if (initialState) {
         component.state.set(initialState);
     }
-};
+}

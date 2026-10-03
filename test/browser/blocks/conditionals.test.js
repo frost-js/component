@@ -2,7 +2,7 @@ import { expect, test } from '#test';
 import { attachMethod, defineComponent, flushTasks, mountComponent, updateState, waitForComponent } from '../../support/utils.js';
 
 test.describe('Component conditionals', () => {
-    test.describe('Branches', () => {
+    test.describe('branches', () => {
         test('renders x:if branch when condition is true', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<div><span id="a" x:if="show">A</span><span id="b" x:else>B</span></div>');
             await page.setContent('<x-component show="true"></x-component>');
@@ -92,12 +92,9 @@ test.describe('Component conditionals', () => {
         });
     });
 
-    test.describe('Deferred bindings', () => {
+    test.describe('deferred bindings', () => {
         for (const directive of ['x:else', 'x:else-if']) {
             test(`defers nested blocks inside ${directive} until activation`, async ({ page }) => {
-                const errors = [];
-                page.on('pageerror', (error) => errors.push(error.message));
-
                 const branch = directive === 'x:else-if' ? 'x:else-if="ready"' : 'x:else';
                 await defineComponent(page, 'x-child', 'XChild', '<li>{name}</li>');
                 await defineComponent(page, 'x-parent', 'XParent', `
@@ -117,7 +114,7 @@ test.describe('Component conditionals', () => {
                 await expect(root.locator('#loading')).toHaveText('Loading');
                 await expect(root.locator('section')).toHaveCount(0);
                 await expect(root.locator('#after')).toHaveText('After');
-                expect(errors).toEqual([]);
+
 
                 await updateState(page, parent, {
                     user: { name: 'Ada', items: [{ id: 1, name: 'First' }] },
@@ -133,13 +130,10 @@ test.describe('Component conditionals', () => {
                 });
                 await expect(root.locator('#name')).toHaveText('Grace');
                 await expect(root.locator('li')).toHaveText(['Updated', 'Second']);
-                expect(errors).toEqual([]);
             });
         }
 
         test('defers hidden branch bindings and preserves state on reactivation', async ({ page }) => {
-            const errors = [];
-            page.on('pageerror', (error) => errors.push(error.message));
             await defineComponent(page, 'x-child', 'XChild', '<p class="child">{count}</p>');
             await defineComponent(page, 'x-parent', 'XParent', `
                 <div>
@@ -166,7 +160,6 @@ test.describe('Component conditionals', () => {
                 await updateState(page, parent, { user });
                 await expect(page.locator('section')).toHaveCount(0);
                 await flushTasks(page);
-                expect(errors).toEqual([]);
             }
 
             await updateState(page, parent, { user: { name: 'Grace' } });
@@ -179,12 +172,9 @@ test.describe('Component conditionals', () => {
                 return document.querySelector('section') === window._branch &&
                     document.querySelector('.child') === window._child.element;
             })).toBe(true);
-            expect(errors).toEqual([]);
         });
 
         test('guards previously activated else-if and else bindings', async ({ page }) => {
-            const errors = [];
-            page.on('pageerror', (error) => errors.push(error.message));
             await defineComponent(page, 'x-parent', 'XParent', `
                 <div>
                     <p id="loading" x:if="loading">Loading</p>
@@ -213,7 +203,7 @@ test.describe('Component conditionals', () => {
             await expect(page.locator('#loading')).toHaveText('Loading');
             await flushTasks(page);
             expect(await page.evaluate(() => window._reads)).toEqual([]);
-            expect(errors).toEqual([]);
+
 
             await updateState(page, parent, {
                 user: { name: 'Grace' },
@@ -223,12 +213,9 @@ test.describe('Component conditionals', () => {
             await expect(page.locator('#fallback')).toHaveText('Grace');
             await expect(page.locator('#ready')).toHaveCount(0);
             expect(await page.evaluate(() => window._reads)).toEqual(['fallback']);
-            expect(errors).toEqual([]);
         });
 
         test('guards nested branches and loops when values are cleared before hiding', async ({ page }) => {
-            const errors = [];
-            page.on('pageerror', (error) => errors.push(error.message));
             await defineComponent(page, 'x-row', 'XRow', '<div class="row">{label}:{name}<input></div>');
             await defineComponent(page, 'x-parent', 'XParent', `
                 <div>
@@ -251,7 +238,7 @@ test.describe('Component conditionals', () => {
             await updateState(page, parent, { user: null, show: false });
             await expect(page.locator('section')).toHaveCount(0);
             await flushTasks(page);
-            expect(errors).toEqual([]);
+
 
             await updateState(page, parent, {
                 user: { name: 'Grace', items: [{ id: 1, name: 'Second' }] },
@@ -263,11 +250,10 @@ test.describe('Component conditionals', () => {
             await expect(page.locator('.row')).toHaveText('Grace:Second');
             await expect(page.locator('input')).toHaveValue('keep this');
             expect(await page.evaluate(() => document.querySelector('.row') === window._row)).toBe(true);
-            expect(errors).toEqual([]);
         });
     });
 
-    test.describe('Nested components and blocks', () => {
+    test.describe('nested components and blocks', () => {
         test('processes nested blocks inside conditional branches', async ({ page }) => {
             await defineComponent(page, 'x-child', 'XChild', '<div class="item"></div>');
             await defineComponent(
@@ -318,8 +304,6 @@ test.describe('Component conditionals', () => {
         });
 
         test('toggles the current conditional root after a nested component is defined late', async ({ page }) => {
-            const errors = [];
-            page.on('pageerror', (error) => errors.push(error.message));
             await defineComponent(page, 'x-wrapper', 'XWrapper', '<x-child count="1"></x-child>');
             await defineComponent(page, 'x-parent', 'XParent', '<div><x-wrapper x:if="{ this.state.count > 0 }"></x-wrapper><p x:else>Empty</p></div>');
             await page.evaluate(() => window.Component.bootstrap());
@@ -355,12 +339,9 @@ test.describe('Component conditionals', () => {
             }
 
             await expect(page.locator('x-child')).toHaveCount(0);
-            expect(errors).toEqual([]);
         });
 
         test('hides a late-defined conditional root during its first connection', async ({ page }) => {
-            const errors = [];
-            page.on('pageerror', (error) => errors.push(error.message));
             await defineComponent(page, 'x-wrapper', 'XWrapper', '<x-child></x-child>');
             await defineComponent(page, 'x-parent', 'XParent', '<div><x-wrapper x:if="show"></x-wrapper></div>');
             const parent = await mountComponent(page, '<x-parent show="true"></x-parent>');
@@ -393,7 +374,6 @@ test.describe('Component conditionals', () => {
             await expect(page.locator('article')).toHaveText('Branch');
             await updateState(page, parent, { show: false });
             await expect(page.locator('article')).toHaveCount(0);
-            expect(errors).toEqual([]);
         });
 
         test('skips binding inside initialized child components on conditional reattach', async ({ page }) => {
@@ -415,24 +395,36 @@ test.describe('Component conditionals', () => {
         });
     });
 
-    test.describe('Invalid directives and expressions', () => {
-        test('still reports expression errors in active branches', async ({ page }) => {
-            await defineComponent(page, 'x-parent', 'XParent', '<div><span x:if="show">{{ this.state.user.name }}</span></div>');
-            const parent = await mountComponent(page, '<x-parent show="true" user="{ name: \'Ada\' }"></x-parent>');
-            await waitForComponent(page, parent);
+    test.describe('invalid directives and expressions', () => {
+        test.describe(() => {
+            test.use({
+                expectedBrowserErrors: [expect.stringContaining('name')],
+            });
 
-            const errorPromise = page.waitForEvent('pageerror');
-            await updateState(page, parent, { user: null });
-            const error = await errorPromise;
-            expect(error.message).toContain('name');
+            test('still reports expression errors in active branches', async ({ page }) => {
+                await defineComponent(page, 'x-parent', 'XParent', '<div><span x:if="show">{{ this.state.user.name }}</span></div>');
+                const parent = await mountComponent(page, '<x-parent show="true" user="{ name: \'Ada\' }"></x-parent>');
+                await waitForComponent(page, parent);
+
+                const errorPromise = page.waitForEvent('pageerror');
+                await updateState(page, parent, { user: null });
+                const error = await errorPromise;
+                expect(error.message).toContain('name');
+            });
         });
 
-        test('throws when x:if and x:each are on the same element', async ({ page }) => {
-            await defineComponent(page, 'x-component', 'XComponent', '<div><span x:if="show" x:each="items" x:id="id"></span></div>');
-            const errorPromise = page.waitForEvent('pageerror');
-            await page.setContent('<x-component show="true" items="[{ id: 1 }]"></x-component>');
-            const error = await errorPromise;
-            expect(error.message).toContain('Conditional elements cannot be looped');
+        test.describe(() => {
+            test.use({
+                expectedBrowserErrors: [expect.stringContaining('Conditional elements cannot be looped')],
+            });
+
+            test('throws when x:if and x:each are on the same element', async ({ page }) => {
+                await defineComponent(page, 'x-component', 'XComponent', '<div><span x:if="show" x:each="items" x:id="id"></span></div>');
+                const errorPromise = page.waitForEvent('pageerror');
+                await page.setContent('<x-component show="true" items="[{ id: 1 }]"></x-component>');
+                const error = await errorPromise;
+                expect(error.message).toContain('Conditional elements cannot be looped');
+            });
         });
     });
 });

@@ -73,13 +73,13 @@ The UMD bundle includes `@fr0st/state` and exposes `globalThis.Component`. Call 
 
 The package root resolves to the prebuilt ESM bundle. Published files under `dist/` and `src/` are also available through matching package subpaths.
 
-## Content Security Policy
+## Content security policy
 
 Frost Component uses the `Function` constructor for full binding expressions, non-method event handlers, JavaScript-valued host attributes, and inline scripts in autoloaded components. Using these features requires `'unsafe-eval'` in the CSP `script-src` directive; a nonce or hash does not replace this permission.
 
 Where supported, dynamically compiled code uses stable `frost-component://` source URLs so bindings, event handlers, state attributes, and inline component scripts are easier to identify in stack traces and browser developer tools.
 
-## Quick Start
+## Usage
 
 ### HTML autoloaded components
 
@@ -148,7 +148,7 @@ JS-defined classes can also opt into shadow DOM with `static shadowMode = 'open'
 
 TypeScript note: Frost Component is written in JavaScript and uses JSDoc types, which most editors surface as IntelliSense.
 
-## Authoring Model
+## Authoring model
 
 Frost Component revolves around a small base class and declarative template bindings.
 
@@ -318,7 +318,7 @@ this.state.use('colors', []);
 this.state.use('tags', []);
 ```
 
-## Control Flow
+## Control flow
 
 Frost Component supports conditional and loop blocks directly in templates.
 
@@ -389,7 +389,7 @@ In both modes, putting `x:if`, `x:else-if`, `x:else`, or `x:each` directly on `<
 
 `x:each` requires a component element. Conditionals and loops remain supported in fallback content and in content supplied to a slot.
 
-## HTML Template Components
+## HTML template components
 
 Autoloaded HTML components can include one render root plus optional top-level scripts and styles. These scripts and styles must be direct children of the template, not nested inside the render root.
 
@@ -568,7 +568,7 @@ The fallback stays visible until the child components finish loading, including 
 
 Bindings inside a fallback template use the declaring component's state, methods, and enclosing conditional scope, including when forwarded through another component. Those bindings are cleaned up when the main content finishes loading and the fallback is removed.
 
-## Behavior Notes
+## Behavior notes
 
 - Light DOM components replace their custom-element host with the rendered root. Shadow components keep the host element.
 - `dispatch()` emits from the component's public DOM node. In light DOM that is the rendered root element. In shadow mode that is the host element.

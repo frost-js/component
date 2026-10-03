@@ -81,7 +81,7 @@ export function parseBlocks(element, conditionals = [], loops = []) {
     }
 
     return [conditionals, loops];
-};
+}
 
 /**
  * Parses a conditional element.
@@ -141,7 +141,7 @@ function parseConditional(element) {
 
         return { condition, element, region };
     });
-};
+}
 
 /**
  * Parses a loop element.
@@ -169,7 +169,7 @@ function parseLoop(element) {
     callDOMMethod(element, 'remove');
 
     return { iterable, identifier, element, start, end };
-};
+}
 
 /**
  * Processes conditional elements.
@@ -213,7 +213,7 @@ export function processConditionals(component, conditionals) {
             }
         });
     }
-};
+}
 
 /**
  * Processes loop elements.
@@ -304,4 +304,4 @@ export function processLoops(component, loops) {
             }
         });
     }
-};
+}

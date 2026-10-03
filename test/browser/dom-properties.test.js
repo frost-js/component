@@ -53,8 +53,6 @@ test.describe('DOM prototype access', () => {
     });
 
     test('renders, updates, and autoloads when named forms shadow document APIs', async ({ page }) => {
-        const errors = [];
-        page.on('pageerror', (error) => errors.push(error.message));
         await defineComponent(page, 'x-doc-row', 'XDocRow', '<span>{label}</span>');
         await defineComponent(page, 'x-doc', 'XDoc', `
             <section>
@@ -106,6 +104,5 @@ test.describe('DOM prototype access', () => {
         await page.evaluate(() => window._documentComponent.state.set({ show: true, label: 'Restored' }));
         await expect.poll(() => page.evaluate(() => window._documentComponent.rootElement.textContent.replace(/\s+/g, '')))
             .toBe('LoadedRestoredTwoFirst');
-        expect(errors).toEqual([]);
     });
 });

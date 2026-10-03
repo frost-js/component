@@ -22,7 +22,7 @@ export function getShadowAssets(ComponentClass) {
     }
 
     return assets;
-};
+}
 
 /**
  * Sets the cached shadow assets for a component class.
@@ -36,4 +36,4 @@ export function setShadowAssets(ComponentClass, { styleBlocks = [], stylesheets 
         styleBlocks: [...styleBlocks],
         stylesheets: [...stylesheets],
     });
-};
+}

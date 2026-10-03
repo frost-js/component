@@ -2,7 +2,7 @@ import { expect, test } from '#test';
 import { attachMethod, defineComponent, mountComponent, waitForComponent } from '../../support/utils.js';
 
 test.describe('Component event bindings', () => {
-    test.describe('Handlers', () => {
+    test.describe('handlers', () => {
         test('binds events to component methods', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<button @click="onClick"></button>');
             await attachMethod(page, 'XComponent', 'onClick', function() {
@@ -84,30 +84,42 @@ test.describe('Component event bindings', () => {
             await expect(page.locator('[x\\:component="x-component"]')).toHaveCount(1);
         });
 
-        test('throws when event handler is a bare expression', async ({ page }) => {
-            await defineComponent(page, 'x-component', 'XComponent', '<button @click="this.state.count = 1"></button>');
-            const errorPromise = page.waitForEvent('pageerror');
-            const component = await mountComponent(page, '<x-component></x-component>');
-            const error = await errorPromise;
-            expect(error.message).toContain('must be a component method, function expression, or braced statement body');
-            expect(await component.evaluate((element) => element.state.count)).toBe(1);
+        test.describe(() => {
+            test.use({
+                expectedBrowserErrors: [expect.stringContaining('must be a component method, function expression, or braced statement body')],
+            });
+
+            test('throws when event handler is a bare expression', async ({ page }) => {
+                await defineComponent(page, 'x-component', 'XComponent', '<button @click="this.state.count = 1"></button>');
+                const errorPromise = page.waitForEvent('pageerror');
+                const component = await mountComponent(page, '<x-component></x-component>');
+                const error = await errorPromise;
+                expect(error.message).toContain('must be a component method, function expression, or braced statement body');
+                expect(await component.evaluate((element) => element.state.count)).toBe(1);
+            });
         });
 
         for (const [name, template] of [
             ['throws when event handler resolves to a non-function component property', '<div><button x:key="button" @click="button"></button></div>'],
             ['throws when event handler resolves to an inherited DOM method', '<button @click="remove"></button>'],
         ]) {
-            test(name, async ({ page }) => {
-                await defineComponent(page, 'x-component', 'XComponent', template);
-                const errorPromise = page.waitForEvent('pageerror');
-                await page.setContent('<x-component></x-component>');
-                const error = await errorPromise;
-                expect(error.message).toContain('must be a component method, function expression, or braced statement body');
+            test.describe(() => {
+                test.use({
+                    expectedBrowserErrors: [expect.stringContaining('must be a component method, function expression, or braced statement body')],
+                });
+
+                test(name, async ({ page }) => {
+                    await defineComponent(page, 'x-component', 'XComponent', template);
+                    const errorPromise = page.waitForEvent('pageerror');
+                    await page.setContent('<x-component></x-component>');
+                    const error = await errorPromise;
+                    expect(error.message).toContain('must be a component method, function expression, or braced statement body');
+                });
             });
         }
     });
 
-    test.describe('Modifiers', () => {
+    test.describe('modifiers', () => {
         test('applies @click.prevent modifier', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<button @click.prevent="onClick"></button>');
             await attachMethod(page, 'XComponent', 'onClick', function(event) {
@@ -241,7 +253,7 @@ test.describe('Component event bindings', () => {
         });
     });
 
-    test.describe('Custom events', () => {
+    test.describe('custom events', () => {
         test('binds bubbled custom events on child component hosts', async ({ page }) => {
             await defineComponent(page, 'x-item', 'XItem', '<button id="remove" @click="{ this.dispatch(\'remove\') }">remove</button>');
             await defineComponent(page, 'x-list', 'XList', '<ul><slot></slot></ul>');
@@ -419,7 +431,7 @@ test.describe('Component event bindings', () => {
         });
     });
 
-    test.describe('Root replacement and cleanup', () => {
+    test.describe('root replacement and cleanup', () => {
         test('binds custom events after a light child host is replaced', async ({ page }) => {
             await defineComponent(page, 'x-child', 'XChild', '<button id="save" @click="{ this.dispatch(\'save\', { id: 1 }) }">save</button>');
             await defineComponent(page, 'x-parent', 'XParent', '<div><x-child @save="onSave"></x-child></div>');
@@ -547,7 +559,7 @@ test.describe('Component event bindings', () => {
         test('keeps lifecycle event bindings on the component instance after root replacement', async ({ page }) => {
             await defineComponent(page, 'x-child', 'XChild', '<button>Save</button>');
             await defineComponent(page, 'x-parent', 'XParent', '<div><x-child @connected="recordEvent" @elementchange="recordEvent" @initialized="recordEvent" @loaded="recordEvent"></x-child></div>');
-            await attachMethod(page, 'XParent', 'recordEvent', function(event) {
+            await attachMethod(page, 'XParent', 'recordEvent', (event) => {
                 window._lifecycle.push([event.type, event.currentTarget.localName]);
             });
             await page.evaluate(() => window._lifecycle = []);

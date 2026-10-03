@@ -15,8 +15,6 @@ const controls = (attribute) => collisions.map((name) => `<input ${attribute}="$
 test.describe('Form named properties', () => {
     for (const attribute of ['name', 'id']) {
         test(`binds a form root with colliding control ${attribute}s`, async ({ page }) => {
-            const errors = [];
-            page.on('pageerror', (error) => errors.push(error.message));
             await defineComponent(page, 'x-form', 'XForm', `
                 <form x:key="form" :class="classes" :style="styles" :data-value="value"
                     :inert="inert" .payload="value" @ping="{ this.state.events++ }">
@@ -91,13 +89,10 @@ test.describe('Form named properties', () => {
 
             await updateState(page, component, { classes: null, styles: null, value: null, inert: true });
             await expect.poll(readForm).toMatchObject({ inert: true, value: null, classes: '', style: '' });
-            expect(errors).toEqual([]);
         });
     }
 
     test('tracks nested components, slots, and mount changes through colliding forms', async ({ page }) => {
-        const errors = [];
-        page.on('pageerror', (error) => errors.push(error.message));
         await defineComponent(page, 'x-parent', 'XParent', '<section><slot></slot></section>');
         await defineComponent(page, 'x-child', 'XChild', '<span>Child</span>');
         await page.evaluate((html) => {
@@ -122,12 +117,9 @@ test.describe('Form named properties', () => {
         await expect.poll(() => page.evaluate(() => window._child.mounted)).toBe(false);
         await page.evaluate(() => window._parent.rootElement.append(window._detachedForm));
         await expect.poll(() => page.evaluate(() => window._child.mounted)).toBe(true);
-        expect(errors).toEqual([]);
     });
 
     test('switches conditional forms and reorders loop rows inside forms', async ({ page }) => {
-        const errors = [];
-        page.on('pageerror', (error) => errors.push(error.message));
         await defineComponent(page, 'x-row', 'XRow', '<span class="row">{label}</span>');
         await defineComponent(page, 'x-list', 'XList', `
             <section>
@@ -153,12 +145,9 @@ test.describe('Form named properties', () => {
         await updateState(page, component, { show: true, items: [] });
         await expect(page.locator('output')).toHaveText('Changed');
         await expect(page.locator('.row')).toHaveCount(0);
-        expect(errors).toEqual([]);
     });
 
     test('autoloads form roots and components inside colliding forms', async ({ page }) => {
-        const errors = [];
-        page.on('pageerror', (error) => errors.push(error.message));
         await mockComponents(page, {
             'x-loaded-form': `<form>${controls('name')}<slot></slot><x-loaded-child></x-loaded-child></form>`,
             'x-loaded-child': '<span>Loaded</span>',
@@ -171,6 +160,5 @@ test.describe('Form named properties', () => {
         await waitForComponent(page, child);
         await expect(page.locator('[x\\:component="x-loaded-child"]')).toHaveText(['Loaded', 'Loaded']);
         expect(await page.evaluate(() => document.querySelector('[x\\:component="x-loaded-form"]').textContent)).toBe('FormLoaded');
-        expect(errors).toEqual([]);
     });
 });

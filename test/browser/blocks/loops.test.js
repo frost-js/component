@@ -2,7 +2,7 @@ import { expect, test } from '#test';
 import { defineComponent, mountComponent, updateState, waitForComponent } from '../../support/utils.js';
 
 test.describe('Component loops', () => {
-    test.describe('Rendering and updates', () => {
+    test.describe('rendering and updates', () => {
         test('renders x:each loops from initial items', async ({ page }) => {
             await defineComponent(page, 'x-child', 'XChild', '<div class="item"></div>');
             await defineComponent(page, 'x-parent', 'XParent', '<div><x-child x:each="items" x:id="id"></x-child></div>');
@@ -134,7 +134,7 @@ test.describe('Component loops', () => {
         }
     });
 
-    test.describe('Item state and identifiers', () => {
+    test.describe('item state and identifiers', () => {
         test('clears omitted loop item fields without clearing child state', async ({ page }) => {
             await defineComponent(page, 'x-child', 'XChild', '<div class="item">{name}|{local}</div>');
             await defineComponent(
@@ -229,7 +229,7 @@ test.describe('Component loops', () => {
         });
     });
 
-    test.describe('Pending components', () => {
+    test.describe('pending components', () => {
         test('reuses pending loop components across rapid same-id updates', async ({ page }) => {
             await page.addScriptTag({
                 content: `
@@ -271,8 +271,6 @@ test.describe('Component loops', () => {
 
         for (const change of ['removes', 'reorders']) {
             test(`${change} loop rows during a late-defined root's first connection`, async ({ page }) => {
-                const errors = [];
-                page.on('pageerror', (error) => errors.push(error.message));
                 await defineComponent(page, 'x-row', 'XRow', '<x-leaf></x-leaf>');
                 await defineComponent(page, 'x-parent', 'XParent', '<div><x-row x:each="items"></x-row></div>');
                 await page.evaluate(() => window.Component.bootstrap());
@@ -321,41 +319,58 @@ test.describe('Component loops', () => {
                 await expect(page.locator('article')).toHaveText(['1']);
                 await updateState(page, parent, { items: [] });
                 await expect(page.locator('article')).toHaveCount(0);
-                expect(errors).toEqual([]);
             });
         }
     });
 
-    test.describe('Invalid loops', () => {
-        test('throws when x:each is used on a non-component element', async ({ page }) => {
-            await defineComponent(page, 'x-component', 'XComponent', '<div><span x:each="items" x:id="id"></span></div>');
-            const errorPromise = page.waitForEvent('pageerror');
-            await page.setContent('<x-component items="[{ id: 1 }]"></x-component>');
-            const error = await errorPromise;
-            expect(error.message).toContain('Loop elements must be components');
+    test.describe('invalid loops', () => {
+        test.describe(() => {
+            test.use({
+                expectedBrowserErrors: [expect.stringContaining('Loop elements must be components')],
+            });
+
+            test('throws when x:each is used on a non-component element', async ({ page }) => {
+                await defineComponent(page, 'x-component', 'XComponent', '<div><span x:each="items" x:id="id"></span></div>');
+                const errorPromise = page.waitForEvent('pageerror');
+                await page.setContent('<x-component items="[{ id: 1 }]"></x-component>');
+                const error = await errorPromise;
+                expect(error.message).toContain('Loop elements must be components');
+            });
         });
 
-        test('throws when x:each iterable is not an array', async ({ page }) => {
-            await defineComponent(page, 'x-child', 'XChild', '<div class="item"></div>');
-            await defineComponent(page, 'x-parent', 'XParent', '<div><x-child x:each="items" x:id="id"></x-child></div>');
-            const errorPromise = page.waitForEvent('pageerror');
-            await page.setContent('<x-parent items="{ id: 1 }"></x-parent>');
-            const error = await errorPromise;
-            expect(error.message).toContain('Iterable "items" must be an array');
+        test.describe(() => {
+            test.use({
+                expectedBrowserErrors: [expect.stringContaining('Iterable "items" must be an array')],
+            });
+
+            test('throws when x:each iterable is not an array', async ({ page }) => {
+                await defineComponent(page, 'x-child', 'XChild', '<div class="item"></div>');
+                await defineComponent(page, 'x-parent', 'XParent', '<div><x-child x:each="items" x:id="id"></x-child></div>');
+                const errorPromise = page.waitForEvent('pageerror');
+                await page.setContent('<x-parent items="{ id: 1 }"></x-parent>');
+                const error = await errorPromise;
+                expect(error.message).toContain('Iterable "items" must be an array');
+            });
         });
 
         for (const [name, items, message] of [
             ['throws when x:each items are missing identifiers', [{ name: 'x' }], 'must have a "id" property'],
             ['throws when x:each items have duplicate identifiers', [{ id: 1 }, { id: 1 }], 'Duplicate identifier "1" in "items"'],
         ]) {
-            test(name, async ({ page }) => {
-                await defineComponent(page, 'x-child', 'XChild', '<div class="item"></div>');
-                await defineComponent(page, 'x-parent', 'XParent', '<div><x-child x:each="items" x:id="id"></x-child></div>');
-                const parent = await mountComponent(page, '<x-parent items="[]"></x-parent>');
-                const errorPromise = page.waitForEvent('pageerror');
-                await updateState(page, parent, { items });
-                const error = await errorPromise;
-                expect(error.message).toContain(message);
+            test.describe(() => {
+                test.use({
+                    expectedBrowserErrors: [expect.stringContaining(message)],
+                });
+
+                test(name, async ({ page }) => {
+                    await defineComponent(page, 'x-child', 'XChild', '<div class="item"></div>');
+                    await defineComponent(page, 'x-parent', 'XParent', '<div><x-child x:each="items" x:id="id"></x-child></div>');
+                    const parent = await mountComponent(page, '<x-parent items="[]"></x-parent>');
+                    const errorPromise = page.waitForEvent('pageerror');
+                    await updateState(page, parent, { items });
+                    const error = await errorPromise;
+                    expect(error.message).toContain(message);
+                });
             });
         }
     });

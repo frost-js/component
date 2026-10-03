@@ -2,7 +2,7 @@ import { expect, test } from '#test';
 import { defineComponent, flushTasks, mountComponent, updateState, waitForComponent } from '../../support/utils.js';
 
 test.describe('Component input bindings', () => {
-    test.describe('Text inputs', () => {
+    test.describe('text inputs', () => {
         test('binds input values with x:bind', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<div><input id="name" x:bind="name"></div>');
             const component = await mountComponent(page, '<x-component name="alice"></x-component>');
@@ -49,7 +49,7 @@ test.describe('Component input bindings', () => {
         });
     });
 
-    test.describe('Checkboxes and radio buttons', () => {
+    test.describe('checkboxes and radio buttons', () => {
         test('binds checkbox boolean values with x:bind', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<div><input id="flag" type="checkbox" x:bind="enabled"></div>');
             const component = await mountComponent(page, '<x-component enabled="false"></x-component>');
@@ -223,7 +223,7 @@ test.describe('Component input bindings', () => {
         }
     });
 
-    test.describe('Select inputs', () => {
+    test.describe('select inputs', () => {
         test('binds select single values with x:bind', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<div><select id="sel" x:bind="choice"><option value="a">a</option><option value="b">b</option></select></div>');
             const component = await mountComponent(page, '<x-component choice="b"></x-component>');

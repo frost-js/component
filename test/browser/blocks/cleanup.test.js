@@ -92,7 +92,7 @@ test.describe('Loop binding cleanup', () => {
                 this.state.items = [];
             });
         });
-        await attachMethod(page, 'XRow', 'initialize', function() {
+        await attachMethod(page, 'XRow', 'initialize', () => {
             window._rowInitialized = true;
         });
         await page.evaluate(() => {
@@ -157,29 +157,35 @@ test.describe('Loop binding cleanup', () => {
         expect(await page.evaluate(() => window._bindingRuns)).toBe(0);
     });
 
-    test('cleans up partial row bindings and restores the scope after a setup error', async ({ page }) => {
-        await defineComponent(page, 'x-list', 'XList', '<div><x-row x:each="items" :color="{ this.readColor() }" .title="color"></x-row></div>');
-        await attachMethod(page, 'XList', 'readColor', function() {
-            window._bindingRuns++;
-            return this.state.color;
+    test.describe(() => {
+        test.use({
+            expectedBrowserErrors: [expect.stringContaining('only supports custom properties')],
         });
-        const component = await mountComponent(page, '<x-list items="[]" color="red"></x-list>');
-        await waitForComponent(page, component);
 
-        const errorPromise = page.waitForEvent('pageerror');
-        await updateState(page, component, { items: [{ id: 1 }] });
-        const error = await errorPromise;
-        expect(error.message).toContain('only supports custom properties');
-        await expect(page.locator('.row')).toHaveCount(0);
+        test('cleans up partial row bindings and restores the scope after a setup error', async ({ page }) => {
+            await defineComponent(page, 'x-list', 'XList', '<div><x-row x:each="items" :color="{ this.readColor() }" .title="color"></x-row></div>');
+            await attachMethod(page, 'XList', 'readColor', function() {
+                window._bindingRuns++;
+                return this.state.color;
+            });
+            const component = await mountComponent(page, '<x-list items="[]" color="red"></x-list>');
+            await waitForComponent(page, component);
 
-        await component.evaluate((list) => {
-            window._bindingRuns = 0;
-            window._outsideValues = [];
-            list.effect(() => window._outsideValues.push(list.state.color));
+            const errorPromise = page.waitForEvent('pageerror');
+            await updateState(page, component, { items: [{ id: 1 }] });
+            const error = await errorPromise;
+            expect(error.message).toContain('only supports custom properties');
+            await expect(page.locator('.row')).toHaveCount(0);
+
+            await component.evaluate((list) => {
+                window._bindingRuns = 0;
+                window._outsideValues = [];
+                list.effect(() => window._outsideValues.push(list.state.color));
+            });
+            await updateState(page, component, { color: 'blue' });
+            await flushTasks(page);
+            expect(await page.evaluate(() => window._bindingRuns)).toBe(0);
+            expect(await page.evaluate(() => window._outsideValues)).toEqual(['red', 'blue']);
         });
-        await updateState(page, component, { color: 'blue' });
-        await flushTasks(page);
-        expect(await page.evaluate(() => window._bindingRuns)).toBe(0);
-        expect(await page.evaluate(() => window._outsideValues)).toEqual(['red', 'blue']);
     });
 });

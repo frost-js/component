@@ -2,7 +2,7 @@ import { expect, test } from '#test';
 import { attachMethod, defineComponent, flushTasks, mockComponents, mountComponent, updateState, waitForComponent } from '../support/utils.js';
 
 test.describe('Suspense component', () => {
-    test.describe('Fallback and loading', () => {
+    test.describe('fallback and loading', () => {
         test('shows fallback until child components load, then unwraps', async ({ page }) => {
             await defineComponent(page, 'x-delay', 'XDelay', '<div id="child">ready</div>');
             await attachMethod(page, 'XDelay', 'initialize', function() {
@@ -256,11 +256,9 @@ test.describe('Suspense component', () => {
         });
     });
 
-    test.describe('Slots and blocks', () => {
+    test.describe('slots and blocks', () => {
         for (const forwarded of [false, true]) {
             test(`keeps ${forwarded ? 'forwarded' : 'direct'} fallback template bindings in their declaring scope`, async ({ page }) => {
-                const errors = [];
-                page.on('pageerror', (error) => errors.push(error.message));
                 await defineComponent(page, 'x-delay', 'XDelay', '<div id="child">ready</div>');
                 await attachMethod(page, 'XDelay', 'initialize', function() {
                     this.deferLoad(new Promise((resolve) => {
@@ -307,7 +305,7 @@ test.describe('Suspense component', () => {
                 await page.evaluate(() => window._parent.state.set({ show: false, user: null }));
                 await expect(page.locator('#cancel')).toHaveCount(0);
                 await flushTasks(page);
-                expect(errors).toEqual([]);
+
                 await page.evaluate(() => window._parent.state.set({ user: { name: 'Grace' }, show: true }));
                 await expect(page.locator('#user')).toHaveText('Grace');
 
@@ -324,13 +322,10 @@ test.describe('Suspense component', () => {
                 });
                 await flushTasks(page);
                 expect(await page.evaluate(() => window._parent.state.calls)).toBe(1);
-                expect(errors).toEqual([]);
             });
         }
 
         test('keeps unwrapped content inside its conditional branch', async ({ page }) => {
-            const errors = [];
-            page.on('pageerror', (error) => errors.push(error.message));
             await defineComponent(page, 'x-parent', 'XParent', `
                 <div id="parent">
                     <x-suspense x:if="{ this.state.count > 0 }">
@@ -374,13 +369,9 @@ test.describe('Suspense component', () => {
                 await expect(page.locator('#fallback')).toHaveCount(0);
                 expect(await input.evaluate((element) => element === window._input)).toBe(true);
             }
-
-            expect(errors).toEqual([]);
         });
 
         test('unwraps content when loading finishes while its conditional is hidden', async ({ page }) => {
-            const errors = [];
-            page.on('pageerror', (error) => errors.push(error.message));
             await defineComponent(page, 'x-delay', 'XDelay', '<div id="child">ready</div>');
             await attachMethod(page, 'XDelay', 'initialize', function() {
                 this.deferLoad(new Promise((resolve) => {
@@ -417,12 +408,9 @@ test.describe('Suspense component', () => {
             await expect(page.locator('#parent > #content')).toBeVisible();
             await expect(page.locator('#fallback')).toHaveCount(0);
             expect(await page.locator('#child').evaluate((element) => element === window._child.element)).toBe(true);
-            expect(errors).toEqual([]);
         });
 
         test('reuses, reorders, and removes complete unwrapped loop rows', async ({ page }) => {
-            const errors = [];
-            page.on('pageerror', (error) => errors.push(error.message));
             await defineComponent(page, 'x-parent', 'XParent', `
                 <div id="parent">
                     <x-suspense x:each="items">
@@ -470,7 +458,6 @@ test.describe('Suspense component', () => {
             await expect(inputs).toHaveCount(1);
             await expect(inputs).toHaveValue('');
             await expect(page.locator('.fallback')).toHaveCount(0);
-            expect(errors).toEqual([]);
         });
     });
 });

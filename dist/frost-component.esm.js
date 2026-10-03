@@ -1721,7 +1721,7 @@ function define(tagName, html, templateUrl) {
 	container.innerHTML = html;
 	const componentShadowMode = parseShadowMode(container);
 	const elements = callDOMMethod(container, "querySelectorAll", ":scope > :not(script, link[rel=\"stylesheet\"], style)");
-	if (elements.length != 1) throw new Error("Components must render a single element");
+	if (elements.length !== 1) throw new Error("Components must render a single element");
 	if (callDOMMethod(elements[0], "matches", "slot")) throw new Error("Components cannot render a root slot element");
 	if (callDOMMethod(elements[0], "matches", "x-suspense")) throw new Error("Components cannot render a root x-suspense element");
 	const sourceScripts = callDOMMethod(container, "querySelectorAll", ":scope > script[src]");

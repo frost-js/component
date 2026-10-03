@@ -119,7 +119,7 @@ export function bind(component, element) {
 
         node = walker.nextNode();
     }
-};
+}
 
 /**
  * Renders a template using the component and effect scope that declared it.
@@ -144,7 +144,7 @@ export function bindTemplate(component, template) {
 
     callDOMMethod(template, 'replaceWith', fragment);
     return dispose;
-};
+}
 
 /**
  * Binds a dynamic attribute to a component.
@@ -267,7 +267,7 @@ function bindAttribute(component, element, name, value) {
             });
             break;
     }
-};
+}
 
 /**
  * Binds an event handler to a component.
@@ -286,9 +286,13 @@ function bindEvent(component, element, name, value) {
     let callback;
     if (!handlerValue) {
         callback = () => { };
-    } else if (handlerValue in component && typeof component[handlerValue] === 'function' && findPropertyOwner(component, handlerValue, {
-        stopAt: HTMLElement.prototype,
-    })) {
+    } else if (
+        handlerValue in component &&
+        typeof component[handlerValue] === 'function' &&
+        findPropertyOwner(component, handlerValue, {
+            stopAt: HTMLElement.prototype,
+        })
+    ) {
         callback = component[handlerValue].bind(component);
     } else if (handlerValue.startsWith('{') && handlerValue.endsWith('}')) {
         callback = createFunction(
@@ -367,7 +371,7 @@ function bindEvent(component, element, name, value) {
         callDOMMethod(target, 'removeEventListener', eventName, handler, options);
         callDOMMethod(element, 'removeEventListener', 'elementchange', update);
     });
-};
+}
 
 /**
  * Binds an input element to component state.
@@ -405,6 +409,7 @@ function bindInput(component, element, name, value) {
                         component.state[value] = [...component.state[value], inputValue];
                     }
                 } else {
+                    // eslint-disable-next-line eqeqeq -- DOM input values are strings and may represent numeric state.
                     component.state[value] = [...component.state[value].filter((value) => value != inputValue)];
                 }
             } else {
@@ -413,6 +418,7 @@ function bindInput(component, element, name, value) {
         });
     } else if (callDOMMethod(element, 'matches', 'input[type="radio"]')) {
         update = () => {
+            // eslint-disable-next-line eqeqeq -- DOM input values are strings and may represent numeric state.
             element.checked = component.state[value] == getDOMProperty(element, 'value');
         };
 
@@ -420,6 +426,7 @@ function bindInput(component, element, name, value) {
             const inputValue = getDOMProperty(element, 'value');
             if (getDOMProperty(element, 'checked')) {
                 component.state[value] = inputValue;
+            // eslint-disable-next-line eqeqeq -- DOM input values are strings and may represent numeric state.
             } else if (component.state[value] == inputValue) {
                 component.state[value] = undefined;
             }
@@ -477,7 +484,7 @@ function bindInput(component, element, name, value) {
         });
         EffectScope.get(component).addCleanup(() => observer.disconnect());
     }
-};
+}
 
 /**
  * Binds a component expression to a DOM property.
@@ -528,7 +535,7 @@ function bindProperty(component, element, name, value) {
     }
 
     setup();
-};
+}
 
 /**
  * Binds a text node to component expressions.
@@ -674,4 +681,4 @@ function bindText(component, node) {
             .map((part) => typeof part === 'string' ? part : part())
             .join('');
     });
-};
+}

@@ -2,7 +2,7 @@ import { expect, test } from '#test';
 import { attachMethod, defineComponent, flushTasks, mountComponent, updateState, waitForComponent } from '../support/utils.js';
 
 test.describe('Component slots', () => {
-    test.describe('Assignment', () => {
+    test.describe('assignment', () => {
         test('assigns default slots', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<div><slot></slot></div>');
             await page.setContent('<x-component><p>Body</p></x-component>');
@@ -60,7 +60,7 @@ test.describe('Component slots', () => {
         }
     });
 
-    test.describe('Binding scope', () => {
+    test.describe('binding scope', () => {
         test('binds parent-authored default slot content to the parent scope', async ({ page }) => {
             await defineComponent(page, 'x-child', 'XChild', '<div><slot></slot></div>');
             await defineComponent(page, 'x-parent', 'XParent', '<div><slot name="body"></slot></div>');
@@ -149,7 +149,7 @@ test.describe('Component slots', () => {
         });
     });
 
-    test.describe('Fallback content', () => {
+    test.describe('fallback content', () => {
         test('renders fallback content until a node is assigned', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<div><slot><span class="fallback">Fallback</span></slot></div>');
             await page.setContent('<x-component></x-component><x-component><span class="assigned">Assigned</span></x-component>');
@@ -163,8 +163,6 @@ test.describe('Component slots', () => {
         for (const directive of ['x:if', 'x:each']) {
             for (const assigned of [false, true]) {
                 test(`${assigned ? 'hides and restores' : 'renders'} slot fallback containing ${directive}`, async ({ page }) => {
-                    const errors = [];
-                    page.on('pageerror', (error) => errors.push(error.message));
                     await defineComponent(page, 'x-row', 'XRow', '<p class="fallback">Fallback</p>');
                     await defineComponent(page, 'x-parent', 'XParent', `
                         <div>
@@ -186,16 +184,12 @@ test.describe('Component slots', () => {
                         await root.locator('b').evaluate((element) => element.remove());
                         await expect(root).toHaveText('Fallback');
                     }
-
-                    expect(errors).toEqual([]);
                 });
             }
         }
 
         for (const directive of ['x:if', 'x:each']) {
             test(`pauses and resumes fallback ${directive} effects after loading`, async ({ page }) => {
-                const errors = [];
-                page.on('pageerror', (error) => errors.push(error.message));
                 await defineComponent(page, 'x-row', 'XRow', '<p class="fallback">Fallback</p>');
                 await defineComponent(page, 'x-parent', 'XParent', `
                     <div><slot>${directive === 'x:if' ? '<p class="fallback" x:if="show">Fallback</p>' : '<x-row x:each="items"></x-row>'}</slot></div>
@@ -223,15 +217,12 @@ test.describe('Component slots', () => {
                 await expect(root).toBeEmpty();
                 await updateState(page, parent, { show: true, items: [{ id: 3 }] });
                 await expect(root).toHaveText('Fallback');
-                expect(errors).toEqual([]);
             });
         }
 
         for (const name of ['', 'heading']) {
             for (const directive of ['x:if', 'x:each']) {
                 test(`restores ${name || 'default'} slot fallback when a ${directive} block becomes empty`, async ({ page }) => {
-                    const errors = [];
-                    page.on('pageerror', (error) => errors.push(error.message));
                     await defineComponent(page, 'x-shell', 'XShell', `<section><slot name="${name}"><i class="fallback">{label}</i></slot></section>`);
                     await defineComponent(page, 'x-row', 'XRow', '<p class="row">Row {id}</p>');
                     await defineComponent(page, 'x-parent', 'XParent', `<div><x-shell label="Fallback">${directive === 'x:if' ? `<h1 slot="${name}" x:if="show">Heading</h1>` : `<x-row slot="${name}" x:each="items"></x-row>`}</x-shell></div>`);
@@ -251,7 +242,6 @@ test.describe('Component slots', () => {
                     await expect(page.locator('section')).toHaveText(directive === 'x:if' ? 'Heading' : 'Row 2');
                     await updateState(page, parent, { show: false, items: [] });
                     await expect(page.locator('section')).toHaveText('Latest');
-                    expect(errors).toEqual([]);
                 });
             }
         }
@@ -259,8 +249,6 @@ test.describe('Component slots', () => {
         for (const directive of ['x:if', 'x:each']) {
             for (const userFirst of [false, true]) {
                 test(`pauses fallback during batched ${directive} replacement with user ${userFirst ? 'first' : 'last'}`, async ({ page }) => {
-                    const errors = [];
-                    page.on('pageerror', (error) => errors.push(error.message));
                     await defineComponent(page, 'x-shell', 'XShell', '<section><slot><i>{{ this.state.user.name }}</i></slot></section>');
                     await defineComponent(page, 'x-row', 'XRow', '<b>Assigned</b>');
                     await defineComponent(page, 'x-parent', 'XParent', `<div><x-shell :user="user">${directive === 'x:if' ? '<b x:if="show">Assigned</b>' : '<x-row x:each="items"></x-row>'}</x-shell></div>`);
@@ -274,11 +262,10 @@ test.describe('Component slots', () => {
                     }, { directive, userFirst });
                     await expect(page.locator('section')).toHaveText('Assigned');
                     await flushTasks(page);
-                    expect(errors).toEqual([]);
+
 
                     await updateState(page, parent, { user: { name: 'Restored' }, show: false, items: [] });
                     await expect(page.locator('section')).toHaveText('Restored');
-                    expect(errors).toEqual([]);
                 });
             }
         }
@@ -286,8 +273,6 @@ test.describe('Component slots', () => {
         for (const defaultSlot of [false, true]) {
             for (const active of [false, true]) {
                 test(`updates named-slot blocks ${defaultSlot ? 'with' : 'without'} a default slot, initially ${active ? 'active' : 'empty'}`, async ({ page }) => {
-                    const errors = [];
-                    page.on('pageerror', (error) => errors.push(error.message));
                     await defineComponent(page, 'x-shell', 'XShell', `
                         <section>
                             <header><slot name="heading"></slot></header>
@@ -330,14 +315,11 @@ test.describe('Component slots', () => {
                     await expect(header.locator('.branch')).toHaveText('First');
                     await expect(header.locator('.row')).toHaveText(['3']);
                     await expect(page.locator('main')).toHaveText(defaultSlot ? ['Default'] : []);
-                    expect(errors).toEqual([]);
                 });
             }
         }
 
         test('observes assigned blocks after a late-defined root moves the slot markers', async ({ page }) => {
-            const errors = [];
-            page.on('pageerror', (error) => errors.push(error.message));
             await defineComponent(page, 'x-shell', 'XShell', '<x-late><slot><i class="fallback">Fallback</i></slot></x-late>');
             await defineComponent(page, 'x-parent', 'XParent', '<div><x-shell><h1 x:if="show">Heading</h1></x-shell></div>');
             const parent = await mountComponent(page, '<x-parent show="false"></x-parent>');
@@ -350,12 +332,9 @@ test.describe('Component slots', () => {
             await expect(page.locator('.fallback')).toHaveCount(0);
             await updateState(page, parent, { show: false });
             await expect(page.locator('article')).toHaveText('Fallback');
-            expect(errors).toEqual([]);
         });
 
         test('keeps fallback bindings inside their enclosing conditional scope', async ({ page }) => {
-            const errors = [];
-            page.on('pageerror', (error) => errors.push(error.message));
             await defineComponent(page, 'x-parent', 'XParent', '<div><section x:if="show"><slot><span>{{ this.state.user.name }}</span></slot></section></div>');
             const parent = await mountComponent(page, '<x-parent show="false" user="null"></x-parent>');
             await waitForComponent(page, parent);
@@ -382,7 +361,6 @@ test.describe('Component slots', () => {
             await flushTasks(page);
             await updateState(page, parent, { user: { name: 'Restored' }, show: true });
             await expect(page.locator('span')).toHaveText('Restored');
-            expect(errors).toEqual([]);
         });
 
         test('pauses and resumes nested fallback bindings without duplicating them', async ({ page }) => {
@@ -424,8 +402,6 @@ test.describe('Component slots', () => {
         });
 
         test('waits until fallback is first restored to evaluate its bindings', async ({ page }) => {
-            const errors = [];
-            page.on('pageerror', (error) => errors.push(error.message));
             await defineComponent(page, 'x-parent', 'XParent', '<div><slot><span>{{ this.state.user.name }}</span></slot></div>');
             const parent = await mountComponent(page, '<x-parent user="null"><b>Assigned</b></x-parent>');
             await waitForComponent(page, parent);
@@ -434,7 +410,6 @@ test.describe('Component slots', () => {
             await updateState(page, parent, { user: { name: 'Restored' } });
             await page.locator('b').evaluate((element) => element.remove());
             await expect(page.locator('span')).toHaveText('Restored');
-            expect(errors).toEqual([]);
         });
 
         test('restores the same fallback inputs and event handlers after the last assigned node is removed', async ({ page }) => {

@@ -31,4 +31,4 @@ export function parseElements(element) {
     }
 
     return result;
-};
+}

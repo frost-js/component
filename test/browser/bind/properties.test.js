@@ -2,7 +2,7 @@ import { expect, test } from '#test';
 import { attachMethod, defineComponent, flushTasks, mountComponent, updateState, waitForComponent } from '../../support/utils.js';
 
 test.describe('Component property bindings', () => {
-    test.describe('Element properties', () => {
+    test.describe('element properties', () => {
         test('binds state expressions to element properties', async ({ page }) => {
             await defineComponent(page, 'x-parent', 'XParent', '<div><button id="target" .service="service"></button></div>');
             await attachMethod(page, 'XParent', 'initialize', function() {
@@ -76,16 +76,22 @@ test.describe('Component property bindings', () => {
             }
         });
 
-        test('throws when binding built-in DOM properties', async ({ page }) => {
-            await defineComponent(page, 'x-parent', 'XParent', '<div><input .value="token"></div>');
-            const errorPromise = page.waitForEvent('pageerror');
-            await page.setContent('<x-parent token="abc"></x-parent>');
-            const error = await errorPromise;
-            expect(error.message).toContain('only supports custom properties');
+        test.describe(() => {
+            test.use({
+                expectedBrowserErrors: [expect.stringContaining('only supports custom properties')],
+            });
+
+            test('throws when binding built-in DOM properties', async ({ page }) => {
+                await defineComponent(page, 'x-parent', 'XParent', '<div><input .value="token"></div>');
+                const errorPromise = page.waitForEvent('pageerror');
+                await page.setContent('<x-parent token="abc"></x-parent>');
+                const error = await errorPromise;
+                expect(error.message).toContain('only supports custom properties');
+            });
         });
     });
 
-    test.describe('Custom element upgrades', () => {
+    test.describe('custom element upgrades', () => {
         for (const value of ['latest', null, undefined]) {
             test(`assigns ${String(value)} after definition and keeps updates reactive`, async ({ page }) => {
                 await defineComponent(page, 'x-parent', 'XParent', '<div><data-target .payload="payload"></data-target></div>');
@@ -162,8 +168,6 @@ test.describe('Component property bindings', () => {
         });
 
         test('defers a late-defined property binding until its branch is active', async ({ page }) => {
-            const errors = [];
-            page.on('pageerror', (error) => errors.push(error.message));
             await defineComponent(page, 'x-parent', 'XParent', `
                 <div>
                     <section x:if="show">
@@ -195,7 +199,6 @@ test.describe('Component property bindings', () => {
             await updateState(page, parent, { user: { name: 'updated' }, show: true });
             await expect(page.locator('data-target')).toHaveCount(1);
             await expect.poll(() => page.evaluate(() => window._setterCalls)).toEqual(['updated']);
-            expect(errors).toEqual([]);
         });
 
         test('disposes property bindings when rows are removed before or after definition', async ({ page }) => {
@@ -233,24 +236,30 @@ test.describe('Component property bindings', () => {
             expect(await page.evaluate(() => window._setterCalls)).toEqual(['initial', 'updated']);
         });
 
-        test('does not retry binding when a custom element fails to upgrade', async ({ page }) => {
-            await defineComponent(page, 'x-parent', 'XParent', '<div><data-target .payload="payload"></data-target></div>');
-            const parent = await mountComponent(page, '<x-parent payload="initial"></x-parent>');
-            await waitForComponent(page, parent);
-
-            const errorPromise = page.waitForEvent('pageerror');
-            await page.evaluate(() => {
-                customElements.define('data-target', class extends HTMLElement {
-                    constructor() {
-                        super();
-                        throw new Error('Upgrade failed');
-                    }
-                });
+        test.describe(() => {
+            test.use({
+                expectedBrowserErrors: [expect.stringContaining('Upgrade failed')],
             });
-            const error = await errorPromise;
-            expect(error.message).toContain('Upgrade failed');
-            await flushTasks(page);
-            expect(await page.locator('data-target').evaluate((element) => Object.hasOwn(element, 'payload'))).toBe(false);
+
+            test('does not retry binding when a custom element fails to upgrade', async ({ page }) => {
+                await defineComponent(page, 'x-parent', 'XParent', '<div><data-target .payload="payload"></data-target></div>');
+                const parent = await mountComponent(page, '<x-parent payload="initial"></x-parent>');
+                await waitForComponent(page, parent);
+
+                const errorPromise = page.waitForEvent('pageerror');
+                await page.evaluate(() => {
+                    customElements.define('data-target', class extends HTMLElement {
+                        constructor() {
+                            super();
+                            throw new Error('Upgrade failed');
+                        }
+                    });
+                });
+                const error = await errorPromise;
+                expect(error.message).toContain('Upgrade failed');
+                await flushTasks(page);
+                expect(await page.locator('data-target').evaluate((element) => Object.hasOwn(element, 'payload'))).toBe(false);
+            });
         });
     });
 });

@@ -208,7 +208,7 @@ test.describe('Component assets', () => {
         expect(await page.evaluate(() => window._scriptOrder)).toEqual(['first', 'second']);
     });
 
-    test.describe('Shared assets', () => {
+    test.describe('shared assets', () => {
         test('loads shared script sources only once', async ({ page }) => {
             let sharedScriptRequests = 0;
 
@@ -341,59 +341,65 @@ test.describe('Component assets', () => {
         await expect(page.locator('head link[rel="stylesheet"]')).toHaveCount(1);
     });
 
-    test('retries stylesheet loading after failure', async ({ page }) => {
-        let componentRequests = 0;
-        let stylesheetRequests = 0;
+    test.describe(() => {
+        test.use({
+            expectedBrowserErrors: [expect.stringContaining('Failed to load stylesheet "http://test.local/components/retry.css"')],
+        });
 
-        await page.route('**/*', async (route) => {
-            const url = route.request().url();
+        test('retries stylesheet loading after failure', async ({ page }) => {
+            let componentRequests = 0;
+            let stylesheetRequests = 0;
 
-            if (url === 'http://test.local/components/x-retry') {
-                componentRequests++;
-                await route.fulfill({
-                    status: 200,
-                    contentType: 'text/html',
-                    body: `
+            await page.route('**/*', async (route) => {
+                const url = route.request().url();
+
+                if (url === 'http://test.local/components/x-retry') {
+                    componentRequests++;
+                    await route.fulfill({
+                        status: 200,
+                        contentType: 'text/html',
+                        body: `
                         <link rel="stylesheet" href="./retry.css">
                         <div>ok</div>
                     `,
-                });
-                return;
-            }
+                    });
+                    return;
+                }
 
-            if (url === 'http://test.local/components/retry.css') {
-                stylesheetRequests++;
-                await route.fulfill({
-                    status: stylesheetRequests === 1 ? 404 : 200,
-                    contentType: 'text/css',
-                    body: '',
-                });
-                return;
-            }
+                if (url === 'http://test.local/components/retry.css') {
+                    stylesheetRequests++;
+                    await route.fulfill({
+                        status: stylesheetRequests === 1 ? 404 : 200,
+                        contentType: 'text/css',
+                        body: '',
+                    });
+                    return;
+                }
 
-            await route.fulfill({ status: 404 });
+                await route.fulfill({ status: 404 });
+            });
+
+            const errorPromise = page.waitForEvent('pageerror');
+            await page.evaluate(() => {
+                window.Component.bootstrap({ baseUrl: 'http://test.local/components' });
+                document.body.innerHTML = '<x-retry></x-retry>';
+            });
+            const error = await errorPromise;
+
+            expect(error.message).toContain(
+                'Failed to load stylesheet "http://test.local/components/retry.css"',
+            );
+            await expect(page.locator('[x\\:component="x-retry"]')).toHaveCount(0);
+            await expect(page.locator('head link[href="http://test.local/components/retry.css"]')).toHaveCount(0);
+
+            await page.evaluate(() => {
+                document.body.innerHTML = '';
+                document.body.innerHTML = '<x-retry></x-retry>';
+            });
+
+            await expect(page.locator('[x\\:component="x-retry"]')).toHaveText('ok');
+            expect(componentRequests).toBe(2);
+            expect(stylesheetRequests).toBe(2);
         });
-
-        const errorPromise = page.waitForEvent('pageerror');
-        await page.evaluate(() => {
-            window.Component.bootstrap({ baseUrl: 'http://test.local/components' });
-            document.body.innerHTML = '<x-retry></x-retry>';
-        });
-        const error = await errorPromise;
-
-        expect(error.message).toContain(
-            'Failed to load stylesheet "http://test.local/components/retry.css"',
-        );
-        await expect(page.locator('[x\\:component="x-retry"]')).toHaveCount(0);
-        await expect(page.locator('head link[href="http://test.local/components/retry.css"]')).toHaveCount(0);
-
-        await page.evaluate(() => {
-            document.body.innerHTML = '';
-            document.body.innerHTML = '<x-retry></x-retry>';
-        });
-
-        await expect(page.locator('[x\\:component="x-retry"]')).toHaveText('ok');
-        expect(componentRequests).toBe(2);
-        expect(stylesheetRequests).toBe(2);
     });
 });

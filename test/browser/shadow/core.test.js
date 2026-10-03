@@ -2,7 +2,7 @@ import { expect, test } from '#test';
 import { defineComponent, mockComponents, mountComponent } from '../../support/utils.js';
 
 test.describe('Shadow components', () => {
-    test.describe('Shadow roots', () => {
+    test.describe('shadow roots', () => {
         test('creates an open shadow root when directive is present', async ({ page }) => {
             await mockComponents(page, {
                 'x-shadow': `
@@ -135,7 +135,7 @@ test.describe('Shadow components', () => {
         });
     });
 
-    test.describe('Styles', () => {
+    test.describe('styles', () => {
         test('mounts style blocks and stylesheets in shadow root', async ({ page }) => {
             await mockComponents(page, {
                 'x-style': `
@@ -277,7 +277,7 @@ test.describe('Shadow components', () => {
         });
     });
 
-    test.describe('Blocks', () => {
+    test.describe('blocks', () => {
         test('updates x:if inside shadow root', async ({ page }) => {
             await mockComponents(page, {
                 'x-shadow-if': `

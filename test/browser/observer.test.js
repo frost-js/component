@@ -6,7 +6,7 @@ import { attachMethod, defineComponent, flushTasks, mockComponents, mountCompone
 const distPath = path.resolve('dist/frost-component.js');
 
 test.describe('Component observers', () => {
-    test.describe('Bootstrap', () => {
+    test.describe('bootstrap', () => {
         test('autoloads existing elements when bootstrap is called with baseUrl', async ({ page }) => {
             await mockComponents(page, {
                 'x-auto': `<div></div>`,
@@ -87,7 +87,7 @@ test.describe('Component observers', () => {
         });
     });
 
-    test.describe('Mounting', () => {
+    test.describe('mounting', () => {
         test('fires mounted and dismounted events from observers', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<div></div>');
 
@@ -416,7 +416,7 @@ test.describe('Component observers', () => {
         });
     });
 
-    test.describe('Visibility', () => {
+    test.describe('visibility', () => {
         test('fires visible/invisible events from IntersectionObserver', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<div></div>');
 

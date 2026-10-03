@@ -2,7 +2,7 @@ import { expect, test } from '#test';
 import { defineComponent, mountComponent, waitForComponent } from '../support/utils.js';
 
 test.describe('Component constraints', () => {
-    test.describe('Keys', () => {
+    test.describe('keys', () => {
         test('assigns x:key elements to component properties', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<div><span id="title" x:key="a"></span></div>');
             const component = await mountComponent(page, '<x-component></x-component>');
@@ -57,49 +57,73 @@ test.describe('Component constraints', () => {
             ['throws when x:key conflicts with a framework property', '<div><span x:key="state"></span></div>', 'Component property "state" already exists'],
             ['throws when x:key conflicts with a native property', '<div><span x:key="remove"></span></div>', 'Component property "remove" already exists'],
         ]) {
-            test(name, async ({ page }) => {
-                await defineComponent(page, 'x-component', 'XComponent', template);
-                const errorPromise = page.waitForEvent('pageerror');
-                await page.setContent('<x-component></x-component>');
-                const error = await errorPromise;
-                expect(error.message).toContain(message);
+            test.describe(() => {
+                test.use({
+                    expectedBrowserErrors: [expect.stringContaining(message)],
+                });
+
+                test(name, async ({ page }) => {
+                    await defineComponent(page, 'x-component', 'XComponent', template);
+                    const errorPromise = page.waitForEvent('pageerror');
+                    await page.setContent('<x-component></x-component>');
+                    const error = await errorPromise;
+                    expect(error.message).toContain(message);
+                });
             });
         }
     });
 
-    test.describe('Template roots', () => {
+    test.describe('template roots', () => {
         for (const [name, template] of [
             ['throws when a component renders no root elements', ''],
             ['throws when a component renders multiple root elements', '<div></div><div></div>'],
         ]) {
-            test(name, async ({ page }) => {
-                await defineComponent(page, 'x-component', 'XComponent', template);
-                const errorPromise = page.waitForEvent('pageerror');
-                await page.setContent('<x-component></x-component>');
-                const error = await errorPromise;
-                expect(error.message).toContain('Components must only render a single element');
+            test.describe(() => {
+                test.use({
+                    expectedBrowserErrors: [expect.stringContaining('Components must only render a single element')],
+                });
+
+                test(name, async ({ page }) => {
+                    await defineComponent(page, 'x-component', 'XComponent', template);
+                    const errorPromise = page.waitForEvent('pageerror');
+                    await page.setContent('<x-component></x-component>');
+                    const error = await errorPromise;
+                    expect(error.message).toContain('Components must only render a single element');
+                });
             });
         }
 
-        test('throws when a component renders a root slot element', async ({ page }) => {
-            await defineComponent(page, 'x-component', 'XComponent', '<slot></slot>');
-            const errorPromise = page.waitForEvent('pageerror');
-            await page.setContent('<x-component><span>body</span></x-component>');
-            const error = await errorPromise;
-            expect(error.message).toContain('Components cannot render a root slot element');
+        test.describe(() => {
+            test.use({
+                expectedBrowserErrors: [expect.stringContaining('Components cannot render a root slot element')],
+            });
+
+            test('throws when a component renders a root slot element', async ({ page }) => {
+                await defineComponent(page, 'x-component', 'XComponent', '<slot></slot>');
+                const errorPromise = page.waitForEvent('pageerror');
+                await page.setContent('<x-component><span>body</span></x-component>');
+                const error = await errorPromise;
+                expect(error.message).toContain('Components cannot render a root slot element');
+            });
         });
 
-        test('throws when a component renders a root x-suspense element', async ({ page }) => {
-            await page.evaluate(() => window.Component.bootstrap());
-            await defineComponent(page, 'x-component', 'XComponent', '<x-suspense><span>{count}</span></x-suspense>');
-            const errorPromise = page.waitForEvent('pageerror');
-            await page.setContent('<x-component count="1"></x-component>');
-            const error = await errorPromise;
-            expect(error.message).toContain('Components cannot render a root x-suspense element');
+        test.describe(() => {
+            test.use({
+                expectedBrowserErrors: [expect.stringContaining('Components cannot render a root x-suspense element')],
+            });
+
+            test('throws when a component renders a root x-suspense element', async ({ page }) => {
+                await page.evaluate(() => window.Component.bootstrap());
+                await defineComponent(page, 'x-component', 'XComponent', '<x-suspense><span>{count}</span></x-suspense>');
+                const errorPromise = page.waitForEvent('pageerror');
+                await page.setContent('<x-component count="1"></x-component>');
+                const error = await errorPromise;
+                expect(error.message).toContain('Components cannot render a root x-suspense element');
+            });
         });
     });
 
-    test.describe('Slot directives', () => {
+    test.describe('slot directives', () => {
         for (const shadowMode of [null, 'open', 'closed']) {
             test(`supports conditional wrappers around slots in ${shadowMode || 'light'} mode`, async ({ page }) => {
                 await defineComponent(page, 'x-component', 'XComponent', '<div><section x:if="show"><slot name="body"></slot></section></div>');
@@ -124,16 +148,22 @@ test.describe('Component constraints', () => {
             });
 
             for (const directive of ['x:if', 'x:else-if', 'x:else', 'x:each']) {
-                test(`rejects ${directive} directly on slots in ${shadowMode || 'light'} mode, including inactive branches`, async ({ page }) => {
-                    await defineComponent(page, 'x-component', 'XComponent', `<div><section x:if="false"><slot ${directive}="items"></slot></section></div>`);
-                    await page.evaluate((shadowMode) => {
-                        window.XComponent.shadowMode = shadowMode;
-                    }, shadowMode);
+                test.describe(() => {
+                    test.use({
+                        expectedBrowserErrors: [expect.stringContaining('Slot elements cannot have conditional or loop directives')],
+                    });
 
-                    const errorPromise = page.waitForEvent('pageerror');
-                    await page.setContent('<x-component></x-component>');
-                    const error = await errorPromise;
-                    expect(error.message).toContain('Slot elements cannot have conditional or loop directives');
+                    test(`rejects ${directive} directly on slots in ${shadowMode || 'light'} mode, including inactive branches`, async ({ page }) => {
+                        await defineComponent(page, 'x-component', 'XComponent', `<div><section x:if="false"><slot ${directive}="items"></slot></section></div>`);
+                        await page.evaluate((shadowMode) => {
+                            window.XComponent.shadowMode = shadowMode;
+                        }, shadowMode);
+
+                        const errorPromise = page.waitForEvent('pageerror');
+                        await page.setContent('<x-component></x-component>');
+                        const error = await errorPromise;
+                        expect(error.message).toContain('Slot elements cannot have conditional or loop directives');
+                    });
                 });
             }
         }

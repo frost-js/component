@@ -2,7 +2,7 @@ import { expect, test } from '#test';
 import { defineComponent, mountComponent, updateState } from '../../support/utils.js';
 
 test.describe('Component text bindings', () => {
-    test.describe('Interpolation', () => {
+    test.describe('interpolation', () => {
         for (const [name, template, initial, updated] of [
             ['binds text interpolation', '<div><span id="label">{count}</span></div>', '1', '2'],
             ['binds interpolation to state expression', '<div><span id="label">Count: {{ this.state.count }}</span></div>', 'Count: 1', 'Count: 2'],
@@ -56,7 +56,7 @@ test.describe('Component text bindings', () => {
         });
     });
 
-    test.describe('Regular expressions and division', () => {
+    test.describe('regular expressions and division', () => {
         for (const [name, expression, value] of [
             ['closing braces', '/}/.test(this.state.label)', '}'],
             ['opening braces', '/{/.test(this.state.label)', '{'],
@@ -146,7 +146,7 @@ test.describe('Component text bindings', () => {
         }
     });
 
-    test.describe('Incomplete and invalid expressions', () => {
+    test.describe('incomplete and invalid expressions', () => {
         test('leaves unmatched braces as literal text', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<div><span id="label">Count: {count</span></div>');
             await page.setContent('<x-component count="1"></x-component>');
@@ -166,13 +166,19 @@ test.describe('Component text bindings', () => {
             ['this.state.count +', /expected/i],
             ['this.missing()', /missing/],
         ]) {
-            test(`reports errors in text expressions: ${expression}`, async ({ page }) => {
-                await defineComponent(page, 'x-component', 'XComponent', `<div>{{ ${expression} }}</div>`);
-                const errorPromise = page.waitForEvent('pageerror');
-                await page.setContent('<x-component></x-component>');
+            test.describe(() => {
+                test.use({
+                    expectedBrowserErrors: [expect.stringMatching(errorMessage)],
+                });
 
-                const error = await errorPromise;
-                expect(error.message).toMatch(errorMessage);
+                test(`reports errors in text expressions: ${expression}`, async ({ page }) => {
+                    await defineComponent(page, 'x-component', 'XComponent', `<div>{{ ${expression} }}</div>`);
+                    const errorPromise = page.waitForEvent('pageerror');
+                    await page.setContent('<x-component></x-component>');
+
+                    const error = await errorPromise;
+                    expect(error.message).toMatch(errorMessage);
+                });
             });
         }
     });

@@ -29,7 +29,7 @@ export function registerLoadedResources(root = document) {
 
         loadedStylesheets.set(href, Promise.resolve());
     }
-};
+}
 
 /**
  * Parses a shadow mode directive from comment nodes.
@@ -84,7 +84,7 @@ function loadResource(element) {
     callDOMMethod(getDOMProperty(document, 'head'), 'appendChild', element);
 
     return promise;
-};
+}
 
 /**
  * Defines a component class from its HTML template.
@@ -108,7 +108,7 @@ function define(tagName, html, templateUrl) {
 
     const elements = callDOMMethod(container, 'querySelectorAll', ':scope > :not(script, link[rel="stylesheet"], style)');
 
-    if (elements.length != 1) {
+    if (elements.length !== 1) {
         throw new Error('Components must render a single element');
     }
 
@@ -210,7 +210,7 @@ function define(tagName, html, templateUrl) {
 
         customElements.define(tagName, ComponentClass);
     });
-};
+}
 
 /**
  * Starts loading undefined components found in a node collection.
@@ -254,4 +254,4 @@ export function load(nodes, { baseUrl = null, extension = null } = {}) {
             })
             .finally(() => loadingComponents.delete(tagName));
     }
-};
+}

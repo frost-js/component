@@ -2,7 +2,7 @@ import { expect, test } from '#test';
 import { defineComponent, mountComponent, updateState } from '../../support/utils.js';
 
 test.describe('Component attribute bindings', () => {
-    test.describe('Ordinary attributes', () => {
+    test.describe('ordinary attributes', () => {
         for (const [name, template] of [
             ['binds attribute expressions', '<div><div id="box" :title="title"></div></div>'],
             ['supports attribute expressions wrapped in braces', '<div><div id="box" :title="{ this.state.title }"></div></div>'],
@@ -46,7 +46,7 @@ test.describe('Component attribute bindings', () => {
         });
     });
 
-    test.describe('Boolean attributes', () => {
+    test.describe('boolean attributes', () => {
         test('handles false according to boolean and ordinary attribute semantics', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<div><input id="input" type="color" :alpha="alpha" :disabled="disabled" :data-enabled="enabled"></div>');
             const component = await mountComponent(page, '<x-component alpha="true" disabled="true" enabled="false"></x-component>');
@@ -63,7 +63,7 @@ test.describe('Component attribute bindings', () => {
         });
     });
 
-    test.describe('Classes', () => {
+    test.describe('classes', () => {
         test('binds class with array values', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<div><div id="box" :class="classes"></div></div>');
             await page.setContent(`<x-component classes="['a', 'b']"></x-component>`);
@@ -121,7 +121,7 @@ test.describe('Component attribute bindings', () => {
         });
     });
 
-    test.describe('Styles', () => {
+    test.describe('styles', () => {
         test('binds style attributes with object values', async ({ page }) => {
             await defineComponent(page, 'x-component', 'XComponent', '<div><div id="box" :style="({ color: this.state.color })"></div></div>');
             const component = await mountComponent(page, '<x-component color="red"></x-component>');
@@ -198,7 +198,7 @@ test.describe('Component attribute bindings', () => {
         });
     });
 
-    test.describe('Child state', () => {
+    test.describe('child state', () => {
         test('binds :state to child component before initialization', async ({ page }) => {
             await defineComponent(page, 'x-parent', 'XParent', '<div><x-child :state="({ value: 1 })"></x-child></div>');
             await defineComponent(page, 'x-child', 'XChild', '<div></div>');

@@ -74,7 +74,7 @@ export function parseSlots(element) {
         });
 
     return Object.fromEntries(slotMarkers);
-};
+}
 
 /**
  * Creates a fallback boundary with its own bindings and assignment watcher.
@@ -150,7 +150,7 @@ function createFallback(start, end) {
     };
 
     return { end: fallbackEnd, bind: bindFallback, update };
-};
+}
 
 /**
  * Moves a component's light-DOM children into their matching slot markers.
@@ -170,5 +170,5 @@ export function processSlots(component) {
         }
 
         slot.assign(element);
-    };
-};
+    }
+}
