@@ -1297,7 +1297,7 @@
 					}
 					let values = [result];
 					if (Array.isArray(result)) values = result;
-					else if (isPlainObject(result)) values = Object.entries(result).filter(([_, value]) => !!value).map(([key, _]) => key);
+					else if (isPlainObject(result)) values = Object.entries(result).filter(([_, value]) => Boolean(value)).map(([key, _]) => key);
 					const classes = values.flatMap((value) => `${value}`.trim().split(/\s+/).filter(Boolean));
 					classList.add(...classes);
 					previous = classes.length ? classes : null;
@@ -1403,7 +1403,7 @@
 			component.state(value, false);
 			update = () => {
 				if (Array.isArray(component.state[value])) element.checked = component.state[value].includes(getDOMProperty(element, "value"));
-				else element.checked = !!component.state[value];
+				else element.checked = Boolean(component.state[value]);
 			};
 			callDOMMethod(element, "addEventListener", "change", () => {
 				const checked = getDOMProperty(element, "checked");

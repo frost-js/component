@@ -203,7 +203,7 @@ function bindAttribute(component, element, name, value) {
                     values = result;
                 } else if (isPlainObject(result)) {
                     values = Object.entries(result)
-                        .filter(([_, value]) => !!value)
+                        .filter(([_, value]) => Boolean(value))
                         .map(([key, _]) => key);
                 }
 
@@ -396,7 +396,7 @@ function bindInput(component, element, name, value) {
             if (Array.isArray(component.state[value])) {
                 element.checked = component.state[value].includes(getDOMProperty(element, 'value'));
             } else {
-                element.checked = !!component.state[value];
+                element.checked = Boolean(component.state[value]);
             }
         };
 
